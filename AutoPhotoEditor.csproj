@@ -1,0 +1,56 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net9.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UseWPF>true</UseWPF>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <None Remove="Resources\loading-spinner.gif" />
+	  <None Remove="Resources\placeholder.png" />
+	  <None Remove="Resources\watermark.png" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="CloudinaryDotNet" Version="1.27.5" />
+		<PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.6.0" />
+		<PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
+		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.8" />
+		<PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.5" />
+		<PackageReference Include="WpfAnimatedGif" Version="2.0.2" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Reference Include="CdnHydra">
+	    <HintPath>..\HydraDodajOEM\Lista zaznaczonych\bin\Release\CdnHydra.dll</HintPath>
+	  </Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Resource Include="Resources\loading-spinner.gif">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </Resource>
+	  <Resource Include="Resources\placeholder.png">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </Resource>
+	  <Content Include="Resources\watermark.png">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </Content>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Update="Scripts\cropper.py">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Tools\dcraw.exe">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Tools\nconvert.exe">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </None>
+	</ItemGroup>
+
+</Project>
