@@ -1,8 +1,9 @@
-﻿using System.IO;
+﻿using AutoPhotoEditor.Interfaces;
+using System.IO;
 
 namespace AutoPhotoEditor.Services
 {
-    public class FolderWatcher : IDisposable
+    public class FolderWatcher : IFolderWatcher
     {
         private readonly FileSystemWatcher _watcher;
         private readonly Action<string> _onFileCreated;
@@ -11,7 +12,7 @@ namespace AutoPhotoEditor.Services
         {
             _onFileCreated = onFileCreated;
 
-            _watcher = new FileSystemWatcher(folderPath, "*.cr3")
+            _watcher = new FileSystemWatcher(folderPath, "*.*")
             {
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.CreationTime,
                 EnableRaisingEvents = true,

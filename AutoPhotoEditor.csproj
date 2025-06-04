@@ -6,27 +6,25 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<UseWPF>true</UseWPF>
+		<PlatformTarget>x86</PlatformTarget>
 	</PropertyGroup>
 
 	<ItemGroup>
 	  <None Remove="Resources\loading-spinner.gif" />
 	  <None Remove="Resources\placeholder.png" />
 	  <None Remove="Resources\watermark.png" />
+	  <None Remove="Resources\xl-icon.png" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="CloudinaryDotNet" Version="1.27.5" />
 		<PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.6.0" />
 		<PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
+		<PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
+		<PackageReference Include="ModernWpf.MessageBox" Version="0.5.2" />
 		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.8" />
 		<PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.5" />
 		<PackageReference Include="WpfAnimatedGif" Version="2.0.2" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Reference Include="CdnHydra">
-	    <HintPath>..\HydraDodajOEM\Lista zaznaczonych\bin\Release\CdnHydra.dll</HintPath>
-	  </Reference>
 	</ItemGroup>
 
 	<ItemGroup>
@@ -36,13 +34,24 @@
 	  <Resource Include="Resources\placeholder.png">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Resource>
+	  <Resource Include="Resources\xl-icon.png" />
 	  <Content Include="Resources\watermark.png">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Content>
 	</ItemGroup>
 
 	<ItemGroup>
+	  <Reference Include="cdn_api20241_core">
+		<HintPath>Tools\cdn_api20241_core.dll</HintPath>
+		<Private>True</Private> <!-- Ensures the DLL is copied to output directory -->
+	  </Reference>
+	</ItemGroup>
+
+	<ItemGroup>
 	  <None Update="Scripts\cropper.py">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Tools\cdn_api20241.net.dll">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
 	  <None Update="Tools\dcraw.exe">
@@ -51,6 +60,12 @@
 	  <None Update="Tools\nconvert.exe">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Reference Update="cdn_api">
+	    <Aliases>cdn_api,%(Aliases)</Aliases>
+	  </Reference>
 	</ItemGroup>
 
 </Project>

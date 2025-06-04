@@ -11,11 +11,26 @@ def load_image_unicode(path):
     return image
 
 def save_image_unicode(path, image):
-    ext = os.path.splitext(path)[1]
-    result, encoded = cv2.imencode(ext, image)
+    ext = os.path.splitext(path)[1].lower()
+
+    if ext in ['.jpg', '.jpeg'] and image.shape[2] == 4:
+        # Convert transparent image to white background
+        alpha = image[:, :, 3] / 255.0
+        foreground = image[:, :, :3].astype(np.float32)
+        background = np.ones_like(foreground, dtype=np.float32) * 255  # white background
+
+        # Alpha blending
+        blended = foreground * alpha[..., None] + background * (1 - alpha[..., None])
+        image_rgb = blended.astype(np.uint8)
+    else:
+        # No alpha handling needed
+        image_rgb = image if image.shape[2] != 4 else cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+
+    result, encoded = cv2.imencode(ext, image_rgb)
     if not result:
         raise IOError(f"Failed to encode image for saving: {path}")
     encoded.tofile(path)
+
 
 def crop_to_object(image_path, output_path, watermark_path=None, opacity=0.3):
     print("Received args:", sys.argv)
@@ -37,28 +52,39 @@ def crop_to_object(image_path, output_path, watermark_path=None, opacity=0.3):
     # Crop the image tightly
     cropped = img[y:y+h, x:x+w]
 
-    # Resize canvas to 900px on longer side (with transparent padding, NOT image resize)
+    # Step 1: Get cropped image dimensions
     h_cropped, w_cropped = cropped.shape[:2]
-    if h_cropped > w_cropped:
-        target_h = 900
-        target_w = int(w_cropped * (900 / h_cropped))
-    else:
-        target_w = 900
-        target_h = int(h_cropped * (900 / w_cropped))
 
-    # Pad to target_w x target_h
-    pad_top = (target_h - h_cropped) // 2 if target_h > h_cropped else 0
-    pad_bottom = target_h - h_cropped - pad_top if target_h > h_cropped else 0
-    pad_left = (target_w - w_cropped) // 2 if target_w > w_cropped else 0
-    pad_right = target_w - w_cropped - pad_left if target_w > w_cropped else 0
+    # Step 2: Determine whether to scale
+    if max(w_cropped, h_cropped) > 900:
+        # Scale down so the larger side is 900px
+        scale = 900 / max(h_cropped, w_cropped)
+        new_w = int(w_cropped * scale)
+        new_h = int(h_cropped * scale)
+        resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    else:
+        # No scaling, use cropped image directly
+        resized = cropped
+        new_h, new_w = h_cropped, w_cropped
+
+    # Step 3: Padding if necessary
+    pad_top = pad_bottom = pad_left = pad_right = 0
+    if new_w < 900 and new_w >= new_h:
+        pad_left = (900 - new_w) // 2
+        pad_right = 900 - new_w - pad_left
+    if new_h < 900 and new_h > new_w:
+        pad_top = (900 - new_h) // 2
+        pad_bottom = 900 - new_h - pad_top
 
     padded = cv2.copyMakeBorder(
-        cropped,
+        resized,
         top=pad_top, bottom=pad_bottom,
         left=pad_left, right=pad_right,
         borderType=cv2.BORDER_CONSTANT,
-        value=[0, 0, 0, 0]  # Transparent background
+        value=[0, 0, 0, 0]  # Transparent padding
     )
+
+
 
     # Apply watermark AFTER padding, no resizing
     if watermark_path:

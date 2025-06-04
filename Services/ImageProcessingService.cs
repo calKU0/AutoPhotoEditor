@@ -1,4 +1,5 @@
 ﻿using AutoPhotoEditor.Helpers;
+using AutoPhotoEditor.Interfaces;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using SixLabors.ImageSharp.Formats.Png;
@@ -12,7 +13,7 @@ using Size = SixLabors.ImageSharp.Size;
 
 namespace AutoPhotoEditor.Services
 {
-    public class ImageProcessingService
+    public class ImageProcessingService : IImageProcessingService
     {
         private readonly Cloudinary _cloudinary;
         private readonly string _inputFolder;
@@ -43,73 +44,83 @@ namespace AutoPhotoEditor.Services
             _watermarkPath = watermarkPath;
         }
 
-        public async Task<(string withWatermark, string withoutWatermark)> ProcessImageAsync(string filePath, CancellationToken token)
+        public async Task<(string withWatermark, string withoutWatermark)> ProcessImageAsync(string filePath, Action<string> statusCallback, CancellationToken token)
         {
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("File not found.", filePath);
 
             string fileBase = Path.GetFileNameWithoutExtension(filePath);
-            string tempPngPath = Path.Combine(_tempFolder, fileBase + "_temp.png");
+            string extension = Path.GetExtension(filePath).ToLowerInvariant();
 
-            // Step 1: Convert CR3 to PNG
-            using (var image = await Task.Run(() => ImageUtils.ConvertCr3ToImage(_tempFolder, filePath), token))
+            statusCallback("Przygotowanie obrazu...");
+
+            // Step 1: Load and resize image based on extension
+            using var image = await Task.Run(() =>
             {
-                image.Mutate(x => x.Resize(new ResizeOptions
+                return extension switch
                 {
-                    Mode = ResizeMode.Max,
-                    Size = new Size(1920, 1080)
-                }));
-
-                await using var memStream = new MemoryStream();
-                await image.SaveAsync(memStream, new PngEncoder
-                {
-                    CompressionLevel = PngCompressionLevel.BestCompression,
-                    FilterMethod = PngFilterMethod.Adaptive
-                }, token);
-                memStream.Position = 0;
-
-                await File.WriteAllBytesAsync(tempPngPath, memStream.ToArray(), token);
-
-                // Step 2: Upload to Cloudinary
-                var uploadParams = new ImageUploadParams
-                {
-                    File = new FileDescription(fileBase + ".png", memStream)
+                    ".cr3" => ImageUtils.ConvertCr3ToImage(filePath),
+                    ".jpg" or ".jpeg" or ".png" => ImageUtils.LoadAndResizeImage(filePath),
+                    _ => throw new NotSupportedException($"Unsupported file type: {extension}")
                 };
+            }, token);
 
-                var uploadResult = await Task.Run(() => _cloudinary.Upload(uploadParams), token);
-                if (uploadResult.StatusCode != HttpStatusCode.OK || uploadResult.SecureUrl == null)
-                    throw new Exception("Cloudinary upload failed.");
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            await Task.Delay(100);
 
-                // Step 3: Download transparent image (transformation applies background removal)
-                string transformedUrl = _cloudinary.Api.UrlImgUp
-                    .Transform(new Transformation().Named("BG+Watermark"))
-                    .BuildUrl(uploadResult.PublicId + ".png");
+            // Step 2: Upload to Cloudinary from MemoryStream directly
+            await using var memStream = new MemoryStream();
+            await image.SaveAsync(memStream, new PngEncoder
+            {
+                CompressionLevel = PngCompressionLevel.BestCompression,
+                FilterMethod = PngFilterMethod.Adaptive
+            }, token);
+            memStream.Position = 0;
 
-                using var httpClient = new HttpClient();
-                byte[] cloudPng = await httpClient.GetByteArrayAsync(transformedUrl, token);
+            var uploadParams = new ImageUploadParams
+            {
+                File = new FileDescription(fileBase + ".png", memStream)
+            };
 
-                string bgRemovedPath = Path.Combine(_tempFolder, fileBase + "_bg_removed.png");
-                await File.WriteAllBytesAsync(bgRemovedPath, cloudPng, token);
+            statusCallback("Usuwanie tła...");
+            var uploadResult = await Task.Run(() => _cloudinary.Upload(uploadParams), token);
+            if (uploadResult.StatusCode != HttpStatusCode.OK || uploadResult.SecureUrl == null)
+                throw new Exception("Cloudinary upload failed.");
 
-                // Step 4: Run Python crop-only → outputFolderWithoutWatermark
-                string croppedPath = Path.Combine(_outputFolderWithoutWatermark, fileBase + "_cropped.png");
-                RunPythonCrop(bgRemovedPath, croppedPath);
+            // Step 3: Download transparent image (background removed)
+            string transformedUrl = _cloudinary.Api.UrlImgUp
+                .Transform(new Transformation().Named("BG+Watermark"))
+                .BuildUrl(uploadResult.PublicId + ".png");
 
-                // Step 5: Run Python crop+watermark → outputFolder
-                string croppedWatermarkedPath = Path.Combine(_outputFolder, fileBase + "_watermarked.png");
-                RunPythonCrop(bgRemovedPath, croppedWatermarkedPath, _watermarkPath, 0.3f);
+            using var httpClient = new HttpClient();
+            byte[] cloudPng = await httpClient.GetByteArrayAsync(transformedUrl, token);
 
-                // Step 6: Archive original file
-                string archivedPath = Path.Combine(_archiveFolder, Path.GetFileName(filePath));
-                if (File.Exists(archivedPath)) File.Delete(archivedPath);
-                File.Move(filePath, archivedPath);
+            string bgRemovedPath = Path.Combine(_tempFolder, fileBase + "_bg_removed.png");
+            await File.WriteAllBytesAsync(bgRemovedPath, cloudPng, token);
 
-                // Step 7: Clean up Cloudinary
-                _cloudinary.Destroy(new DeletionParams(uploadResult.PublicId));
+            statusCallback("Kadrowanie...");
+            // Step 4: Crop only → without watermark
+            string croppedPath = Path.Combine(_outputFolderWithoutWatermark, fileBase + "_cropped.jpg");
+            RunPythonCrop(bgRemovedPath, croppedPath);
 
-                return (croppedWatermarkedPath, croppedPath);
-            }
+            // Step 5: Crop + watermark
+            string croppedWatermarkedPath = Path.Combine(_outputFolder, fileBase + "_watermarked.jpg");
+            RunPythonCrop(bgRemovedPath, croppedWatermarkedPath, _watermarkPath, 0.5f);
+
+            // Step 6: Archive original
+            string archivedPath = Path.Combine(_archiveFolder, Path.GetFileName(filePath));
+            if (File.Exists(archivedPath)) File.Delete(archivedPath);
+            File.Move(filePath, archivedPath);
+
+            statusCallback("Zakończono.");
+
+            // Step 7: Clean up Cloudinary
+            _cloudinary.Destroy(new DeletionParams(uploadResult.PublicId));
+
+            return (croppedWatermarkedPath, croppedPath);
         }
+
 
         private void RunPythonCrop(string input, string output, string? watermark = null, float opacity = 0.3f)
         {
@@ -138,16 +149,10 @@ namespace AutoPhotoEditor.Services
 
             psi.Arguments = string.Join(" ", argsList);
 
-            Debug.WriteLine($"Running Python: python {_pythonScriptPath} {input} {output} {(watermark != null ? watermark : "")} {opacity.ToString(CultureInfo.InvariantCulture)}");
             using var process = Process.Start(psi);
-            var error = process.StandardError.ReadToEnd();
+            var error = process!.StandardError.ReadToEnd();
             var outputMsg = process.StandardOutput.ReadToEnd();
             process.WaitForExit();
-
-            Debug.WriteLine("Python STDOUT:");
-            Debug.WriteLine(outputMsg);
-            Debug.WriteLine("Python STDERR:");
-            Debug.WriteLine(error);
 
             if (process.ExitCode != 0)
             {

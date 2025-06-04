@@ -6,68 +6,132 @@
         xmlns:gif="http://wpfanimatedgif.codeplex.com"
         xmlns:local="clr-namespace:AutoPhotoEditor"
         mc:Ignorable="d"
-        Title="MainWindow" Height="1080" Width="1920">
+        Title="Auto Photo Editor" Height="1080" Width="1920"
+        Background="#F5F5F5"
+        FontFamily="Segoe UI" FontSize="16" WindowState="Maximized" WindowStartupLocation="CenterScreen">
+
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
-            <!-- Image column -->
-            <ColumnDefinition Width="Auto" />
-            <!-- Button column -->
+            <ColumnDefinition Width="250" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
-            <!-- Full height -->
         </Grid.RowDefinitions>
 
-        <!-- Image fills the left side -->
-        <Grid Grid.Column="0" Margin="10">
-            <Image x:Name="DownloadedImage"
-           Stretch="Uniform"
-           VerticalAlignment="Stretch"
-           HorizontalAlignment="Stretch" />
+        <!-- Left image area with zoom & styling -->
+        <Border Grid.Column="0"
+                Margin="20"
+                Background="White"
+                CornerRadius="10"
+                Padding="10"
+                Effect="{DynamicResource DropShadowEffect}">
 
-            <Grid x:Name="LoadingOverlay" Background="#80000000" Visibility="Collapsed">
-                <Image Width="64" Height="64"
-               VerticalAlignment="Center"
-               HorizontalAlignment="Center"
-               gif:ImageBehavior.AnimatedSource="pack://application:,,,/AutoPhotoEditor;component/Resources/loading-spinner.gif"
-               gif:ImageBehavior.RepeatBehavior="Forever"/>
+            <Grid>
+                <ScrollViewer x:Name="ImageScrollViewer"
+                    HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Auto"
+                    PreviewMouseWheel="ImageScrollViewer_PreviewMouseWheel">
+                    <!-- Disable built-in panning -->
+
+                    <!-- Use Grid container instead of Canvas -->
+                    <Grid x:Name="ImageContainerGrid" Background="Transparent"
+      MouseDown="ImageGrid_MouseDown"
+      MouseMove="ImageGrid_MouseMove"
+      MouseUp="ImageGrid_MouseUp">
+                        <Image x:Name="DownloadedImage"
+           RenderTransformOrigin="0,0"
+           Stretch="None"
+           Loaded="DownloadedImage_Loaded">
+                            <Image.LayoutTransform>
+                                <ScaleTransform x:Name="ImageScaleTransform" ScaleX="1" ScaleY="1"/>
+                            </Image.LayoutTransform>
+                        </Image>
+                    </Grid>
+
+                </ScrollViewer>
+
+                <!-- Loading overlay stays on top -->
+                <Grid x:Name="LoadingOverlay" Background="#80000000" Visibility="Collapsed">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <Image Width="200" Height="200"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"
+                           gif:ImageBehavior.AnimatedSource="pack://application:,,,/AutoPhotoEditor;component/Resources/loading-spinner.gif"
+                           gif:ImageBehavior.RepeatBehavior="Forever"/>
+                        <TextBlock x:Name="LoadingStatusText"
+                               Opacity="0"
+                               VerticalAlignment="Bottom"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,10"
+                               Foreground="White"
+                               FontSize="20"
+                               FontWeight="Bold"
+                               Text="Ładowanie..."
+                               Visibility="Visible"/>
+                    </StackPanel>
+                </Grid>
             </Grid>
-        </Grid>
+        </Border>
+
+        <!-- Button Panel -->
+        <Border Grid.Column="1"
+                VerticalAlignment="Top"
+                Margin="20"
+                Background="White"
+                CornerRadius="10"
+                Padding="20"
+                Effect="{DynamicResource DropShadowEffect}">
+
+            <StackPanel>
+                <TextBlock Text="Kontrolki" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
+
+                <Button x:Name="StartButton"
+                        Content="▶  Rozpocznij"
+                        Height="50"
+                        Margin="0,0,0,60"
+                        Click="StartButton_Click"
+                        Style="{StaticResource PrimaryButtonStyle}"/>
+
+                <Button x:Name="StopButton"
+                        Content="⏹  Zatrzymaj"
+                        Height="50"
+                        Margin="0,0,0,60"
+                        Click="StopButton_Click"
+                        Visibility="Collapsed"
+                        Style="{StaticResource DangerButtonStyle}"/>
+
+                <Button x:Name="SaveToXlButton"
+                    Height="50"
+                    Margin="0,0,0,10"
+                    Click="SaveButtonToXl_Click"
+                    IsEnabled="False"
+                    Style="{StaticResource SuccessButtonStyle}">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Image Source="pack://application:,,,/AutoPhotoEditor;component/Resources/xl-icon.png"
+                            Width="20" Height="20" Margin="0,0,8,0"/>
+                        <TextBlock Text="Zapisz do Xla"
+                   VerticalAlignment="Center"
+                   Foreground="White"/>
+                    </StackPanel>
+                </Button>
 
 
-        <!-- Buttons stack on the right -->
-        <StackPanel Grid.Column="1"
-                    VerticalAlignment="Top"
-                    Margin="10"
-                    Width="220">
+                <Button x:Name="SaveButton"
+                        Content="💾  Zapisz"
+                        Height="50"
+                        Margin="0,0,0,10"
+                        Click="SaveButton_Click"
+                        IsEnabled="False"
+                        Style="{StaticResource SuccessButtonStyle}"/>
 
-            <Button x:Name="StartButton"
-            Content="Start"
-            Height="50"
-            Margin="0,0,0,10"
-            Click="StartButton_Click"/>
-
-            <Button x:Name="StopButton"
-            Content="Stop"
-            Height="50"
-            Margin="0,0,0,10"
-            Click="StopButton_Click"
-            Visibility="Collapsed" />
-
-            <Button x:Name="SaveButton"
-            Content="Zapisz"
-            Height="50"
-            Margin="0,0,0,10"
-            Click="SaveButton_Click"
-            IsEnabled="False"/>
-
-            <Button x:Name="DeleteButton"
-            Content="Odrzuć"
-            Height="50"
-            Click="DeleteButton_Click"
-            IsEnabled="False"/>
-
-        </StackPanel>
+                <Button x:Name="DeleteButton"
+                        Content="🗑  Odrzuć"
+                        Height="50"
+                        Click="DeleteButton_Click"
+                        IsEnabled="False"
+                        Style="{StaticResource DangerButtonStyle}"/>
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>
