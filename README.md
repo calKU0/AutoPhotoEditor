@@ -91,7 +91,7 @@ Configuration values are stored in `App.config`. Below is an example configurati
 
   </appSettings>
   <connectionStrings>
-    <add name="GaskaConnectionString" connectionString="Server='serwer';Database='database';User Id='User';Password='password';Connection Timeout=5 TrustServerCertificate=True"/>
+    <add name="ConnectionString" connectionString="Server='serwer';Database='database';User Id='User';Password='password';Connection Timeout=5 TrustServerCertificate=True"/>
   </connectionStrings>
 </configuration>
 ```
@@ -108,7 +108,7 @@ Configuration values are stored in `App.config`. Below is an example configurati
 
 ## License
 
-This project is licensed under the MIT License.
+This project is proprietary and confidential. See the [LICENSE](LICENSE) file for more information.
 
 ---
 
