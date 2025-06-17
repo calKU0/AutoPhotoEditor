@@ -11,6 +11,7 @@
 
 	<ItemGroup>
 	  <None Remove="Resources\loading-spinner.gif" />
+	  <None Remove="Resources\photoshop-icon.png" />
 	  <None Remove="Resources\placeholder.png" />
 	  <None Remove="Resources\watermark.png" />
 	  <None Remove="Resources\xl-icon.png" />
@@ -31,6 +32,7 @@
 	  <Resource Include="Resources\loading-spinner.gif">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Resource>
+	  <Resource Include="Resources\photoshop-icon.png" />
 	  <Resource Include="Resources\placeholder.png">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Resource>

@@ -54,6 +54,8 @@ namespace AutoPhotoEditor
         public readonly string _inputFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["InputFolder"] ?? "");
         public readonly string _outputFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["OutputWithWatermark"] ?? "");
         public readonly string _outputFolderWithoutLogo = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["OutputWithoutWatermark"] ?? "");
+        public readonly string _manualEditsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["ManualEditsFolder"] ?? "");
+        public readonly string _pathToPhotoshop = ConfigurationManager.AppSettings["PathToPhotoshop"] ?? "";
 
         #endregion
 
@@ -64,7 +66,8 @@ namespace AutoPhotoEditor
         private IDatabaseService _databaseService;
         private IXlService _xlService;
         private IImageProcessingService _imageService;
-        private IFolderWatcher? _folderWatcher;
+        private IFolderWatcher _folderWatcher;
+        private IFolderWatcher _manualEditWatcher;
 
         private string? _lastProcessedImagePath;
         private string? _lastOriginalFilePath;
@@ -84,18 +87,13 @@ namespace AutoPhotoEditor
             InitializeComponent();
             CheckIfFoldersExists();
 
-            //Environment.SetEnvironmentVariable("MAGICK_MEMORY_LIMIT", "536870912");  // 512 MB
-            //Environment.SetEnvironmentVariable("MAGICK_DISK_LIMIT", "1073741824");   // 1 GB
-            //Environment.SetEnvironmentVariable("MAGICK_MAP_LIMIT", "536870912");     // 512 MB
-            //Environment.SetEnvironmentVariable("MAGICK_THREAD_LIMIT", "2");          // 2 threads
-
             DownloadedImage.Source = new BitmapImage(placeholder);
 
             ImageScaleTransform.ScaleX = 1;
             ImageScaleTransform.ScaleY = 1;
 
             var account = new Account(_cloudName, _apiKey, _apiSecret);
-            var cloudinary = new Cloudinary(account) { Api = { Timeout = 100000 } };
+            var cloudinary = new Cloudinary(account) { Api = { Timeout = 150000 } };
 
             _imageService = new ImageProcessingService(cloudinary, _inputFolder, _tempFolder, _outputFolder, _outputFolderWithoutLogo, _archiveFolder, _pythonScriptPath, _watermarkPath);
 
@@ -113,20 +111,7 @@ namespace AutoPhotoEditor
             _databaseService = new DatabaseService(_connectionString);
         }
 
-        private void DisplayImage(byte[] data)
-        {
-            var bitmap = new BitmapImage();
-            using var stream = new MemoryStream(data);
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.StreamSource = stream;
-            bitmap.EndInit();
-
-            DownloadedImage.Source = bitmap;
-            Dispatcher.Invoke(() => ResizeImageToFit(), DispatcherPriority.Loaded);
-        }
-
-        private void StartButton_Click(object sender, RoutedEventArgs e)
+        private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             if (_folderWatcher != null)
             {
@@ -135,8 +120,6 @@ namespace AutoPhotoEditor
             }
 
             _cts = new CancellationTokenSource();
-            StartButton.Visibility = Visibility.Collapsed;
-            StopButton.Visibility = Visibility.Visible;
 
             _folderWatcher = new FolderWatcher(_inputFolder, async filePath =>
             {
@@ -147,7 +130,6 @@ namespace AutoPhotoEditor
                     {
                         MessageBoxResult? result = MessageBoxResult.None;
 
-                        // Wymuszamy wywołanie w wątku UI
                         Dispatcher.Invoke(() =>
                         {
                             result = MessageBox.Show("Czy na pewno chcesz usunąć zdjęcie?", "Potwierdź",
@@ -177,9 +159,7 @@ namespace AutoPhotoEditor
                     {
                         ShowLoading(true);
 
-                        SaveButton.IsEnabled = false;
-                        SaveToXlButton.IsEnabled = false;
-                        DeleteButton.IsEnabled = false;
+                        ChangeButtonsActive(false);
                     });
 
                     (string watermarkedPath, string croppedOnlyPath) = await _imageService.ProcessImageAsync(filePath, UpdateLoadingStatus, _cts.Token);
@@ -194,9 +174,7 @@ namespace AutoPhotoEditor
                     Dispatcher.Invoke(() =>
                     {
                         DisplayImage(imageBytes);
-                        SaveButton.IsEnabled = true;
-                        SaveToXlButton.IsEnabled = true;
-                        DeleteButton.IsEnabled = true;
+                        ChangeButtonsActive(true);
                     });
                 }
                 catch (OperationCanceledException)
@@ -218,6 +196,71 @@ namespace AutoPhotoEditor
                     Dispatcher.Invoke(() => ShowLoading(false));
                 }
             });
+
+            _manualEditWatcher = new FolderWatcher(_manualEditsFolder, async manualFilePath =>
+            {
+                try
+                {
+                    // Prompt user if previous image was not handled
+                    if (_lastProcessedImagePath != null)
+                    {
+                        MessageBoxResult? result = MessageBoxResult.None;
+
+                        Dispatcher.Invoke(() =>
+                        {
+                            result = MessageBox.Show("Czy na pewno chcesz usunąć zdjęcie?", "Potwierdź",
+                                MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                        });
+
+                        if (result is MessageBoxResult.Yes)
+                        {
+                            if (File.Exists(_lastProcessedImagePath))
+                                File.Delete(_lastProcessedImagePath);
+                            if (_lastCroppedOnlyPath != null && File.Exists(_lastCroppedOnlyPath))
+                                File.Delete(_lastCroppedOnlyPath);
+                            if (_lastOriginalFilePath != null && File.Exists(_lastOriginalFilePath))
+                                File.Delete(_lastOriginalFilePath);
+                        }
+                        else
+                        {
+                            return;
+                        }
+
+                        _lastProcessedImagePath = null;
+                        _lastOriginalFilePath = null;
+                        _lastCroppedOnlyPath = null;
+                    }
+
+                    byte[] imageBytes = await File.ReadAllBytesAsync(manualFilePath);
+
+                    _lastProcessedImagePath = manualFilePath;
+                    Dispatcher.Invoke(() =>
+                    {
+                        DisplayImage(imageBytes);
+                        ChangeButtonsActive(true);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        MessageBox.Show($"Błąd przy wyświetlaniu obrazu z folderu ręcznych edycji. {ex}", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
+                    });
+                }
+            });
+        }
+
+        private void DisplayImage(byte[] data)
+        {
+            var bitmap = new BitmapImage();
+            using var stream = new MemoryStream(data);
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.StreamSource = stream;
+            bitmap.EndInit();
+
+            DownloadedImage.Source = bitmap;
+            Dispatcher.Invoke(() => ResizeImageToFit(), DispatcherPriority.Loaded);
         }
 
         private async void UpdateLoadingStatus(string message)
@@ -260,19 +303,6 @@ namespace AutoPhotoEditor
                 var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(300));
                 LoadingStatusText.BeginAnimation(OpacityProperty, fadeOut);
             }
-        }
-
-        private void StopButton_Click(object sender, RoutedEventArgs e)
-        {
-            _cts?.Cancel();
-            _cts?.Dispose();
-            _cts = null;
-
-            _folderWatcher?.Dispose();
-            _folderWatcher = null;
-
-            StopButton.Visibility = Visibility.Collapsed;
-            StartButton.Visibility = Visibility.Visible;
         }
 
         private async void SaveButtonToXl_Click(object sender, RoutedEventArgs e)
@@ -318,9 +348,7 @@ namespace AutoPhotoEditor
 
                 // Clear state
                 DownloadedImage.Source = new BitmapImage(placeholder);
-                SaveButton.IsEnabled = false;
-                SaveToXlButton.IsEnabled = false;
-                DeleteButton.IsEnabled = false;
+                ChangeButtonsActive(false);
                 _lastProcessedImagePath = null;
                 _lastCroppedOnlyPath = null;
                 _lastOriginalFilePath = null;
@@ -347,9 +375,7 @@ namespace AutoPhotoEditor
 
                 // Clear state
                 DownloadedImage.Source = new BitmapImage(placeholder);
-                SaveButton.IsEnabled = false;
-                SaveToXlButton.IsEnabled = false;
-                DeleteButton.IsEnabled = false;
+                ChangeButtonsActive(false);
                 _lastProcessedImagePath = null;
                 _lastCroppedOnlyPath = null;
                 _lastOriginalFilePath = null;
@@ -378,9 +404,8 @@ namespace AutoPhotoEditor
 
                 MessageBox.Show("Usunięto zdjęcie.", "Informacja");
 
-                SaveButton.IsEnabled = false;
-                SaveToXlButton.IsEnabled = false;
-                DeleteButton.IsEnabled = false;
+                ChangeButtonsActive(false);
+
                 _lastProcessedImagePath = null;
                 _lastCroppedOnlyPath = null;
                 _lastOriginalFilePath = null;
@@ -392,6 +417,30 @@ namespace AutoPhotoEditor
             catch (Exception ex)
             {
                 MessageBox.Show($"Błąd przy próbie usunięcia zdjęcia. {ex.Message}", "Błąd");
+            }
+        }
+
+        private void OpenWithPs_Click(object sender, RoutedEventArgs e)
+        {
+            if (!File.Exists(_pathToPhotoshop))
+            {
+                MessageBox.Show("Nie znaleziono Photoshopa.", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            if (!File.Exists(_lastOriginalFilePath))
+            {
+                MessageBox.Show("Nie znaleziono zdjęcia do otwarcia.", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            try
+            {
+                Process.Start(_pathToPhotoshop, $"\"{_lastOriginalFilePath}\"");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Wystąpił błąd przy próbie otwarcia photoshopa: {ex.Message}", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -519,6 +568,11 @@ namespace AutoPhotoEditor
             {
                 Directory.CreateDirectory(_outputFolderWithoutLogo);
             }
+
+            if (!Path.Exists(_manualEditsFolder))
+            {
+                Directory.CreateDirectory(_manualEditsFolder);
+            }
         }
 
         private void DownloadedImage_Loaded(object sender, RoutedEventArgs e)
@@ -565,7 +619,6 @@ namespace AutoPhotoEditor
             }, System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
-
         private void ResizeImageToFit()
         {
             if (DownloadedImage.Source is not BitmapSource bitmap)
@@ -606,6 +659,25 @@ namespace AutoPhotoEditor
                 ImageScaleTransform.ScaleY = 1.0;
                 _initialImageScale = 1.0;
             }
+        }
+
+        private void Window_Closed(object sender, EventArgs e)
+        {
+            _cts?.Cancel();
+
+            _folderWatcher?.Dispose();
+            _folderWatcher = null;
+
+            _manualEditWatcher?.Dispose();
+            _manualEditWatcher = null;
+        }
+
+        private void ChangeButtonsActive(bool enable)
+        {
+            SaveButton.IsEnabled = enable;
+            SaveToXlButton.IsEnabled = enable;
+            DeleteButton.IsEnabled = enable;
+            OpenWithPsButton.IsEnabled = enable;
         }
     }
 }

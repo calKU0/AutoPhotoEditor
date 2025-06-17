@@ -8,7 +8,7 @@
         mc:Ignorable="d"
         Title="Auto Photo Editor" Height="1080" Width="1920"
         Background="#F5F5F5"
-        FontFamily="Segoe UI" FontSize="16" WindowState="Maximized" WindowStartupLocation="CenterScreen">
+        FontFamily="Segoe UI" FontSize="16" WindowState="Maximized" WindowStartupLocation="CenterScreen" Loaded="Window_Loaded" Closed="Window_Closed">
 
     <Grid>
         <Grid.ColumnDefinitions>
@@ -86,20 +86,20 @@
             <StackPanel>
                 <TextBlock Text="Kontrolki" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
 
-                <Button x:Name="StartButton"
-                        Content="▶  Rozpocznij"
-                        Height="50"
-                        Margin="0,0,0,60"
-                        Click="StartButton_Click"
-                        Style="{StaticResource PrimaryButtonStyle}"/>
-
-                <Button x:Name="StopButton"
-                        Content="⏹  Zatrzymaj"
-                        Height="50"
-                        Margin="0,0,0,60"
-                        Click="StopButton_Click"
-                        Visibility="Collapsed"
-                        Style="{StaticResource DangerButtonStyle}"/>
+                <Button x:Name="OpenWithPsButton"
+                    Height="50"
+                    Margin="0,0,0,10"
+                    Click="OpenWithPs_Click"
+                    IsEnabled="False"
+                    Style="{StaticResource PrimaryButtonStyle}">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Image Source="pack://application:,,,/AutoPhotoEditor;component/Resources/photoshop-icon.png"
+                            Width="25" Height="25" Margin="0,0,8,0"/>
+                        <TextBlock Text="Otwórz w Ps"
+                   VerticalAlignment="Center"
+                   Foreground="White"/>
+                    </StackPanel>
+                </Button>
 
                 <Button x:Name="SaveToXlButton"
                     Height="50"

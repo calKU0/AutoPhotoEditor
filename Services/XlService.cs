@@ -19,6 +19,9 @@ namespace AutoPhotoEditor.Services
         {
             _xlLogin = xlLogin;
         }
+
+        public bool IsLogged => _sessionId > 0;
+
         public bool Login()
         {
             XLLoginInfo_20241 xLLoginInfo = new()

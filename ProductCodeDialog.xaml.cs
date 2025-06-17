@@ -30,7 +30,6 @@ namespace AutoPhotoEditor
             InitializeComponent();
             _databaseService = databaseService;
             _xlService = xlService;
-            _xlService.Login();
         }
         private async void Ok_Click(object sender, RoutedEventArgs e)
         {
@@ -53,6 +52,7 @@ namespace AutoPhotoEditor
 
         private async void OpenList_Click(object sender, RoutedEventArgs e)
         {
+            _xlService.Login();
             int selectedId = _xlService.OpenProductList();
 
             if (selectedId > 0)
@@ -80,11 +80,19 @@ namespace AutoPhotoEditor
             }
         }
 
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            ProductCodeTextBox.Focus();
+        }
+
         private void Window_Closed(object sender, EventArgs e)
         {
             try
             {
-                _xlService.Logout();
+                if (_xlService.IsLogged)
+                {
+                    _xlService.Logout();
+                }
             }
             catch (Exception logoutEx)
             {
