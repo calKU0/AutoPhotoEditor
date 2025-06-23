@@ -43,12 +43,15 @@ namespace AutoPhotoEditor.Helpers
                 throw new FileNotFoundException("Image file not found.", path);
 
             using var image = Image.Load<Rgba32>(path);
-            image.Mutate(x => x.Resize(new ResizeOptions
+            if (image.Width > 1920 || image.Height > 1080)
             {
-                Size = new Size(1920, 1080),
-                Mode = ResizeMode.Max,
-                Sampler = KnownResamplers.Lanczos3
-            }));
+                image.Mutate(x => x.Resize(new ResizeOptions
+                {
+                    Size = new Size(1920, 1080),
+                    Mode = ResizeMode.Max,
+                    Sampler = KnownResamplers.Lanczos3
+                }));
+            }
 
             var result = new Image<Rgba32>(1920, 1080);
             result.Mutate(x => x.DrawImage(image, new Point(0, 0), 1f));

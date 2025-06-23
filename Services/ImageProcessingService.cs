@@ -2,7 +2,9 @@
 using AutoPhotoEditor.Interfaces;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
+using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using System.Diagnostics;
 using System.Globalization;
@@ -45,7 +47,14 @@ namespace AutoPhotoEditor.Services
             _watermarkPath = watermarkPath;
         }
 
-        public async Task<(string withWatermark, string withoutWatermark)> ProcessImageAsync(string filePath, Action<string> statusCallback, CancellationToken token)
+        public async Task<(string? withWatermark, string withoutWatermark)> ProcessImageAsync(
+            string filePath,
+            Action<string> statusCallback,
+            CancellationToken token,
+            bool removeBg,
+            bool crop,
+            bool addWatermark,
+            string ext)
         {
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("File not found.", filePath);
@@ -55,7 +64,6 @@ namespace AutoPhotoEditor.Services
 
             statusCallback("Przygotowanie obrazu...");
 
-            // Step 1: Load and resize image based on extension
             using var image = await Task.Run(() =>
             {
                 return extension switch
@@ -70,60 +78,94 @@ namespace AutoPhotoEditor.Services
             GC.WaitForPendingFinalizers();
             await Task.Delay(100);
 
-            // Step 2: Upload to Cloudinary from MemoryStream directly
-            await using var memStream = new MemoryStream();
-            await image.SaveAsync(memStream, new PngEncoder
+            string currentImagePath = filePath;
+            string? bgRemovedPath = null;
+            string? withoutWatermarkPath = null;
+            string? withWatermarkPath = null;
+            string? cloudinaryPublicId = null;
+
+            if (removeBg)
             {
-                CompressionLevel = PngCompressionLevel.BestCompression,
-                FilterMethod = PngFilterMethod.Adaptive
-            }, token);
-            memStream.Position = 0;
+                await using var memStream = new MemoryStream();
+                await image.SaveAsync(memStream, new PngEncoder
+                {
+                    CompressionLevel = PngCompressionLevel.BestCompression,
+                    FilterMethod = PngFilterMethod.Adaptive
+                }, token);
+                memStream.Position = 0;
 
-            var uploadParams = new ImageUploadParams
-            {
-                File = new FileDescription(fileBase + ".png", memStream)
-            };
+                var uploadParams = new ImageUploadParams
+                {
+                    File = new FileDescription(fileBase + ".png", memStream)
+                };
 
-            statusCallback("Usuwanie tła...");
-            var uploadResult = await Task.Run(() => _cloudinary.Upload(uploadParams), token);
-            if (uploadResult.StatusCode != HttpStatusCode.OK || uploadResult.SecureUrl == null)
-                throw new Exception("Cloudinary upload failed.");
+                statusCallback("Usuwanie tła...");
+                var uploadResult = await Task.Run(() => _cloudinary.Upload(uploadParams), token);
+                if (uploadResult.StatusCode != HttpStatusCode.OK || uploadResult.SecureUrl == null)
+                    throw new Exception("Cloudinary upload failed.");
 
-            // Step 3: Download transparent image (background removed)
-            string transformedUrl = _cloudinary.Api.UrlImgUp
-                .Transform(new Transformation().Named("BG+Watermark"))
-                .BuildUrl(uploadResult.PublicId + ".png");
+                cloudinaryPublicId = uploadResult.PublicId;
 
-            using var httpClient = new HttpClient();
-            byte[] cloudPng = await httpClient.GetByteArrayAsync(transformedUrl, token);
+                string transformedUrl = _cloudinary.Api.UrlImgUp
+                    .Transform(new Transformation().Named("BG+Watermark"))
+                    .BuildUrl(uploadResult.PublicId + ".png");
 
-            string bgRemovedPath = Path.Combine(_tempFolder, fileBase + "_bg_removed.png");
-            await File.WriteAllBytesAsync(bgRemovedPath, cloudPng, token);
+                using var httpClient = new HttpClient();
+                byte[] cloudPng = await httpClient.GetByteArrayAsync(transformedUrl, token);
+
+                bgRemovedPath = Path.Combine(_tempFolder, fileBase + "_bg_removed.png");
+                await File.WriteAllBytesAsync(bgRemovedPath, cloudPng, token);
+
+                currentImagePath = bgRemovedPath;
+            }
+
+            // Define output paths
+            withoutWatermarkPath = Path.Combine(_outputFolderWithoutWatermark, fileBase + $"_processed.{ext}");
+            withWatermarkPath = Path.Combine(_outputFolder, fileBase + $"_watermarked.{ext}");
 
             statusCallback("Kadrowanie...");
-            // Step 4: Crop only → without watermark
-            string croppedPath = Path.Combine(_outputFolderWithoutWatermark, fileBase + "_cropped.jpg");
-            RunPythonCrop(bgRemovedPath, croppedPath);
 
-            // Step 5: Crop + watermark
-            string croppedWatermarkedPath = Path.Combine(_outputFolder, fileBase + "_watermarked.jpg");
-            RunPythonCrop(bgRemovedPath, croppedWatermarkedPath, _watermarkPath, 0.5f);
+            if (crop || addWatermark)
+            {
+                // If cropping or watermarking needed, run python crop (with crop flag!)
+                RunPythonCrop(currentImagePath, withoutWatermarkPath, null, 0.3f, crop);
 
-            // Step 6: Archive original
+                if (addWatermark)
+                {
+                    RunPythonCrop(currentImagePath, withWatermarkPath, _watermarkPath, 0.5f, crop);
+                }
+            }
+            else
+            {
+                // No cropping, no watermarking — just copy original or resized
+                if (removeBg)
+                {
+                    // Flatten transparency to white before saving to JPG
+                    using var imgWithAlpha = Image.Load<Rgba32>(currentImagePath);
+                    var flattened = imgWithAlpha.Clone(ctx => ctx.BackgroundColor(Color.White));
+                    await flattened.SaveAsJpegAsync(withoutWatermarkPath);
+                }
+                else
+                {
+                    using var originalImage = ImageUtils.LoadAndResizeImage(currentImagePath);
+                    await originalImage.SaveAsJpegAsync(withoutWatermarkPath);
+                }
+            }
+
+            // Archive original
             string archivedPath = Path.Combine(_archiveFolder, Path.GetFileName(filePath));
             if (File.Exists(archivedPath)) File.Delete(archivedPath);
             File.Move(filePath, archivedPath);
 
             statusCallback("Zakończono.");
 
-            // Step 7: Clean up Cloudinary
-            _cloudinary.Destroy(new DeletionParams(uploadResult.PublicId));
+            if (cloudinaryPublicId != null)
+                _cloudinary.Destroy(new DeletionParams(cloudinaryPublicId));
 
-            return (croppedWatermarkedPath, croppedPath);
+            return (addWatermark ? withWatermarkPath : null, withoutWatermarkPath);
         }
 
-
-        private void RunPythonCrop(string input, string output, string? watermark = null, float opacity = 0.3f)
+        private void RunPythonCrop(string input, string output, string? watermark = null, float opacity = 0.3f, bool doCrop = true)
         {
             var psi = new ProcessStartInfo
             {
@@ -135,29 +177,27 @@ namespace AutoPhotoEditor.Services
             };
 
             string Quote(string s) => $"\"{s}\"";
-            var argsList = new List<string>
+            var args = new List<string>
             {
                 Quote(_pythonScriptPath),
                 Quote(input),
-                Quote(output)
+                Quote(output),
+                Quote(watermark ?? "NONE"),
+                doCrop ? "1" : "0",
+                opacity.ToString(CultureInfo.InvariantCulture)
             };
 
-            if (watermark != null)
-            {
-                argsList.Add(Quote(watermark));
-                argsList.Add(opacity.ToString(CultureInfo.InvariantCulture));
-            }
-
-            psi.Arguments = string.Join(" ", argsList);
+            psi.Arguments = string.Join(" ", args);
 
             using var process = Process.Start(psi);
-            var error = process!.StandardError.ReadToEnd();
-            var outputMsg = process.StandardOutput.ReadToEnd();
+            string error = process.StandardError.ReadToEnd();
+            string outputLog = process.StandardOutput.ReadToEnd();
             process.WaitForExit();
 
             if (process.ExitCode != 0)
             {
                 Debug.WriteLine(error);
+                Debug.WriteLine(outputLog);
                 throw new Exception($"Python error: {error}");
             }
         }

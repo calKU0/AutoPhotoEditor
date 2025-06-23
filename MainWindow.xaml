@@ -36,13 +36,10 @@
 
                     <!-- Use Grid container instead of Canvas -->
                     <Grid x:Name="ImageContainerGrid" Background="Transparent"
-      MouseDown="ImageGrid_MouseDown"
-      MouseMove="ImageGrid_MouseMove"
-      MouseUp="ImageGrid_MouseUp">
-                        <Image x:Name="DownloadedImage"
-           RenderTransformOrigin="0,0"
-           Stretch="None"
-           Loaded="DownloadedImage_Loaded">
+                      MouseDown="ImageGrid_MouseDown"
+                      MouseMove="ImageGrid_MouseMove"
+                      MouseUp="ImageGrid_MouseUp">
+                        <Image x:Name="DownloadedImage" RenderTransformOrigin="0,0" Stretch="None" Loaded="DownloadedImage_Loaded">
                             <Image.LayoutTransform>
                                 <ScaleTransform x:Name="ImageScaleTransform" ScaleX="1" ScaleY="1"/>
                             </Image.LayoutTransform>
@@ -73,65 +70,90 @@
                 </Grid>
             </Grid>
         </Border>
+        <StackPanel Grid.Column="1"  VerticalAlignment="Top">
+            <!-- Button Panel -->
+            <Border Grid.Column="1"
+                    VerticalAlignment="Top"
+                    Margin="20"
+                    Background="White"
+                    CornerRadius="10"
+                    Padding="20"
+                    Effect="{DynamicResource DropShadowEffect}">
 
-        <!-- Button Panel -->
-        <Border Grid.Column="1"
-                VerticalAlignment="Top"
-                Margin="20"
-                Background="White"
-                CornerRadius="10"
-                Padding="20"
-                Effect="{DynamicResource DropShadowEffect}">
+                <StackPanel>
+                    <TextBlock Text="Kontrolki" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
 
-            <StackPanel>
-                <TextBlock Text="Kontrolki" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
-
-                <Button x:Name="OpenWithPsButton"
-                    Height="50"
-                    Margin="0,0,0,10"
-                    Click="OpenWithPs_Click"
-                    IsEnabled="False"
-                    Style="{StaticResource PrimaryButtonStyle}">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <Image Source="pack://application:,,,/AutoPhotoEditor;component/Resources/photoshop-icon.png"
-                            Width="25" Height="25" Margin="0,0,8,0"/>
-                        <TextBlock Text="Otwórz w Ps"
-                   VerticalAlignment="Center"
-                   Foreground="White"/>
-                    </StackPanel>
-                </Button>
-
-                <Button x:Name="SaveToXlButton"
-                    Height="50"
-                    Margin="0,0,0,10"
-                    Click="SaveButtonToXl_Click"
-                    IsEnabled="False"
-                    Style="{StaticResource SuccessButtonStyle}">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <Image Source="pack://application:,,,/AutoPhotoEditor;component/Resources/xl-icon.png"
-                            Width="20" Height="20" Margin="0,0,8,0"/>
-                        <TextBlock Text="Zapisz do Xla"
-                   VerticalAlignment="Center"
-                   Foreground="White"/>
-                    </StackPanel>
-                </Button>
-
-
-                <Button x:Name="SaveButton"
-                        Content="💾  Zapisz"
+                    <Button x:Name="OpenWithPsButton"
                         Height="50"
                         Margin="0,0,0,10"
-                        Click="SaveButton_Click"
+                        Click="OpenWithPs_Click"
                         IsEnabled="False"
-                        Style="{StaticResource SuccessButtonStyle}"/>
+                        Style="{StaticResource PrimaryButtonStyle}">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <Image Source="pack://application:,,,/AutoPhotoEditor;component/Resources/photoshop-icon.png"
+                                Width="25" Height="25" Margin="0,0,8,0"/>
+                            <TextBlock Text="Otwórz w Ps"
+                       VerticalAlignment="Center"
+                       Foreground="White"/>
+                        </StackPanel>
+                    </Button>
 
-                <Button x:Name="DeleteButton"
-                        Content="🗑  Odrzuć"
+                    <Button x:Name="SaveToXlButton"
                         Height="50"
-                        Click="DeleteButton_Click"
+                        Margin="0,0,0,10"
+                        Click="SaveButtonToXl_Click"
                         IsEnabled="False"
-                        Style="{StaticResource DangerButtonStyle}"/>
-            </StackPanel>
-        </Border>
+                        Style="{StaticResource SuccessButtonStyle}">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <Image Source="pack://application:,,,/AutoPhotoEditor;component/Resources/xl-icon.png"
+                                Width="20" Height="20" Margin="0,0,8,0"/>
+                            <TextBlock Text="Zapisz do Xla"
+                       VerticalAlignment="Center"
+                       Foreground="White"/>
+                        </StackPanel>
+                    </Button>
+
+
+                    <Button x:Name="SaveButton"
+                            Content="💾  Zapisz"
+                            Height="50"
+                            Margin="0,0,0,10"
+                            Click="SaveButton_Click"
+                            IsEnabled="False"
+                            Style="{StaticResource SuccessButtonStyle}"/>
+
+                    <Button x:Name="DeleteButton"
+                            Content="🗑  Odrzuć"
+                            Height="50"
+                            Click="DeleteButton_Click"
+                            IsEnabled="False"
+                            Style="{StaticResource DangerButtonStyle}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Options Panel -->
+            <Border Grid.Column="1"
+                    VerticalAlignment="Top"
+                    Margin="20"
+                    Background="White"
+                    CornerRadius="10"
+                    Padding="20"
+                    Effect="{DynamicResource DropShadowEffect}">
+
+                <StackPanel>
+                    <TextBlock Text="Opcje" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
+
+                    <CheckBox x:Name="RemoveBackgroundCheckbox" Content="Usuń tło" Margin="0,0,0,10" IsChecked="True" />
+                    <CheckBox x:Name="CropCheckbox" Content="Kadruj" Margin="0,0,0,10" IsChecked="True" />
+                    <CheckBox x:Name="WatermarkCheckbox" Content="Dodaj znak wodny" Margin="0,0,0,10" IsChecked="True"/>
+
+                    <TextBlock Text="Rozszerzenie" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                    <ComboBox x:Name="FileExtensionCombobox">
+                        <ComboBoxItem IsSelected="True">jpg</ComboBoxItem>
+                        <ComboBoxItem>png</ComboBoxItem>
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+        </StackPanel>
     </Grid>
 </Window>

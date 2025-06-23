@@ -113,6 +113,11 @@ namespace AutoPhotoEditor
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            bool removeBg = false;
+            bool crop = false;
+            bool addWatermark = false;
+            string extension = "jpg";
+
             if (_folderWatcher != null)
             {
                 MessageBox.Show("Już nasłuchuje folder.", "Ostrzeżenie", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -158,18 +163,31 @@ namespace AutoPhotoEditor
                     Dispatcher.Invoke(() =>
                     {
                         ShowLoading(true);
-
                         ChangeButtonsActive(false);
+
+                        removeBg = RemoveBackgroundCheckbox.IsChecked ?? false;
+                        crop = CropCheckbox.IsChecked ?? false;
+                        addWatermark = WatermarkCheckbox.IsChecked ?? false;
+                        var selectedItem = FileExtensionCombobox.SelectedItem as ComboBoxItem;
+                        extension = (selectedItem?.Content?.ToString() ?? "jpg").ToLowerInvariant();
                     });
 
-                    (string watermarkedPath, string croppedOnlyPath) = await _imageService.ProcessImageAsync(filePath, UpdateLoadingStatus, _cts.Token);
+                    (string? watermarkedPath, string nonWatermarkedPath) = await _imageService.ProcessImageAsync(
+                        filePath,
+                        UpdateLoadingStatus,
+                        _cts.Token,
+                        removeBg,
+                        crop,
+                        addWatermark,
+                        extension
+                    );
 
                     // Save both paths so we can clean up either
-                    _lastProcessedImagePath = watermarkedPath;
+                    _lastProcessedImagePath = watermarkedPath ?? nonWatermarkedPath;
                     _lastOriginalFilePath = Path.Combine(_archiveFolder, Path.GetFileName(filePath));
-                    _lastCroppedOnlyPath = croppedOnlyPath;
+                    _lastCroppedOnlyPath = nonWatermarkedPath;
 
-                    byte[] imageBytes = await File.ReadAllBytesAsync(watermarkedPath);
+                    byte[] imageBytes = await File.ReadAllBytesAsync(_lastProcessedImagePath);
 
                     Dispatcher.Invoke(() =>
                     {
