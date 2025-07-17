@@ -33,23 +33,27 @@ namespace AutoPhotoEditor
     public partial class MainWindow : Window
     {
         #region Secrets
+
         // Connection string
         public readonly string _connectionString = ConfigurationManager.ConnectionStrings["GaskaConnectionString"].ConnectionString;
 
         // XL settings
         public readonly int _xlApiVersion = Convert.ToInt32(ConfigurationManager.AppSettings["XLApiVersion"]);
+
         public readonly string _xlProgramName = ConfigurationManager.AppSettings["XLProgramName"] ?? "";
         public readonly string _xlDatabase = ConfigurationManager.AppSettings["XLDatabase"] ?? "";
         public readonly string _xlUsername = ConfigurationManager.AppSettings["XLUsername"] ?? "";
         public readonly string _xlPassword = ConfigurationManager.AppSettings["XLPassword"] ?? "";
 
-        // Cloudinary settings 
+        // Cloudinary settings
         public readonly string _cloudName = ConfigurationManager.AppSettings["CloudinaryCloudName"] ?? "";
+
         public readonly string _apiKey = ConfigurationManager.AppSettings["CloudinaryApiKey"] ?? "";
         public readonly string _apiSecret = ConfigurationManager.AppSettings["CloudinaryApiSecret"] ?? "";
 
         // Folders
         public readonly string _archiveFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["ArchiveFolder"] ?? "");
+
         public readonly string _tempFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["TempFolder"] ?? "");
         public readonly string _inputFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["InputFolder"] ?? "");
         public readonly string _outputFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["OutputWithWatermark"] ?? "");
@@ -57,7 +61,7 @@ namespace AutoPhotoEditor
         public readonly string _manualEditsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["ManualEditsFolder"] ?? "");
         public readonly string _pathToPhotoshop = ConfigurationManager.AppSettings["PathToPhotoshop"] ?? "";
 
-        #endregion
+        #endregion Secrets
 
         private readonly Uri placeholder = new Uri("pack://application:,,,/AutoPhotoEditor;component/Resources/placeholder.png");
         private readonly string _pythonScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "cropper.py");
@@ -169,6 +173,7 @@ namespace AutoPhotoEditor
                         crop = CropCheckbox.IsChecked ?? false;
                         addWatermark = WatermarkCheckbox.IsChecked ?? false;
                         var selectedItem = FileExtensionCombobox.SelectedItem as ComboBoxItem;
+
                         extension = (selectedItem?.Content?.ToString() ?? "jpg").ToLowerInvariant();
                     });
 
@@ -359,7 +364,6 @@ namespace AutoPhotoEditor
                         MessageBox.Show("Nie udało się podpiąć zdjęcia do karty towarowej.", "Niepowodzenie", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
-
                 }
 
                 MessageBox.Show("Zapisano oraz podpięto zdjęcie do karty towarowej.", "Informacja", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -418,7 +422,6 @@ namespace AutoPhotoEditor
 
                 if (!string.IsNullOrWhiteSpace(_lastOriginalFilePath) && File.Exists(_lastOriginalFilePath))
                     File.Delete(_lastOriginalFilePath);
-
 
                 MessageBox.Show("Usunięto zdjęcie.", "Informacja");
 
@@ -495,7 +498,6 @@ namespace AutoPhotoEditor
             if (newScale < _initialImageScale)
                 newScale = _initialImageScale;
 
-
             // Position of mouse relative to ScrollViewer
             var scrollViewer = ImageScrollViewer;
             var mousePos = e.GetPosition(scrollViewer);
@@ -520,7 +522,6 @@ namespace AutoPhotoEditor
 
             e.Handled = true;
         }
-
 
         private void ImageGrid_MouseDown(object sender, MouseButtonEventArgs e)
         {
@@ -632,8 +633,6 @@ namespace AutoPhotoEditor
                     ImageScaleTransform.ScaleY = 1.0;
                     _initialImageScale = 1.0;
                 }
-
-
             }, System.Windows.Threading.DispatcherPriority.Loaded);
         }
 

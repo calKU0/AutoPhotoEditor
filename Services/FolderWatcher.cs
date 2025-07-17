@@ -24,8 +24,37 @@ namespace AutoPhotoEditor.Services
 
         private void OnCreated(object sender, FileSystemEventArgs e)
         {
-            // Delay to avoid premature access
-            Task.Delay(500).ContinueWith(_ => _onFileCreated(e.FullPath));
+            Task.Run(async () =>
+            {
+                const int maxRetries = 10;
+                const int delayMs = 500;
+
+                for (int i = 0; i < maxRetries; i++)
+                {
+                    if (IsFileReady(e.FullPath))
+                    {
+                        _onFileCreated(e.FullPath);
+                        return;
+                    }
+
+                    await Task.Delay(delayMs);
+                }
+            });
+        }
+
+        private bool IsFileReady(string filePath)
+        {
+            try
+            {
+                using (var stream = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    return stream.Length > 0;
+                }
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public void Dispose()
