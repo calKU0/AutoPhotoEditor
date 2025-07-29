@@ -62,59 +62,62 @@ def apply_watermark(image, watermark_path, opacity=0.3):
 
 def crop_image(img):
     if img.shape[2] == 4:
-        # Use alpha channel
+        # Crop based on alpha channel
         alpha = img[:, :, 3]
         coords = cv2.findNonZero(alpha)
         if coords is None:
             raise ValueError("No non-transparent pixels found")
         x, y, w, h = cv2.boundingRect(coords)
     else:
-        # Use grayscale and adaptive thresholding
+        # Crop based on largest contour from grayscale image
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        # Invert and threshold automatically with Otsu's method
         _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
-        # Morphological opening to remove noise
         kernel = np.ones((5, 5), np.uint8)
         cleaned = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
-
         contours, _ = cv2.findContours(cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             raise ValueError("No contours found")
-
-        # Find largest contour
         largest = max(contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(largest)
 
     cropped = img[y:y + h, x:x + w]
-
-    # Resize
     h_cropped, w_cropped = cropped.shape[:2]
     max_dim = max(h_cropped, w_cropped)
+
     if max_dim > 900:
+        # Scale down so largest side = 900
         scale = 900 / max_dim
-        new_size = (int(w_cropped * scale), int(h_cropped * scale))
-        resized = cv2.resize(cropped, new_size, interpolation=cv2.INTER_AREA)
+        new_w = int(w_cropped * scale)
+        new_h = int(h_cropped * scale)
+        resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        return resized
     else:
-        resized = cropped
-        new_size = (w_cropped, h_cropped)
+        # Pad the larger side to 900, keep aspect ratio, no resizing
+        pad_top, pad_bottom, pad_left, pad_right = 0, 0, 0, 0
 
-    # Padding
-    pad_h = 900 - new_size[1]
-    pad_w = 900 - new_size[0]
-    pad_top = pad_h // 2
-    pad_bottom = pad_h - pad_top
-    pad_left = pad_w // 2
-    pad_right = pad_w - pad_left
+        if h_cropped >= w_cropped:
+            # height is larger or equal, pad height side
+            pad_total = 900 - h_cropped
+            pad_top = pad_total // 2
+            pad_bottom = pad_total - pad_top
+        else:
+            # width is larger, pad width side
+            pad_total = 900 - w_cropped
+            pad_left = pad_total // 2
+            pad_right = pad_total - pad_left
 
-    border_color = [0, 0, 0, 0] if resized.shape[2] == 4 else [255, 255, 255]
-    padded = cv2.copyMakeBorder(
-        resized, pad_top, pad_bottom, pad_left, pad_right,
-        cv2.BORDER_CONSTANT, value=border_color
-    )
+        # Determine border color based on channels
+        if cropped.shape[2] == 4:
+            border_color = [0, 0, 0, 0]  # transparent padding for 4 channel
+        else:
+            border_color = [255, 255, 255]  # white padding for 3 channel
 
-    return padded
+        padded = cv2.copyMakeBorder(
+            cropped, pad_top, pad_bottom, pad_left, pad_right,
+            cv2.BORDER_CONSTANT, value=border_color
+        )
+        return padded
+
 
 
 def process_image(image_path, output_path, watermark_path=None, opacity=0.3, do_crop=False):

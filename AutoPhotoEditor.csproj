@@ -50,6 +50,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <None Update="Scripts\bgRemover.py">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </None>
 	  <None Update="Scripts\cropper.py">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>

@@ -45,12 +45,6 @@ namespace AutoPhotoEditor
         public readonly string _xlUsername = ConfigurationManager.AppSettings["XLUsername"] ?? "";
         public readonly string _xlPassword = ConfigurationManager.AppSettings["XLPassword"] ?? "";
 
-        // Cloudinary settings
-        public readonly string _cloudName = ConfigurationManager.AppSettings["CloudinaryCloudName"] ?? "";
-
-        public readonly string _apiKey = ConfigurationManager.AppSettings["CloudinaryApiKey"] ?? "";
-        public readonly string _apiSecret = ConfigurationManager.AppSettings["CloudinaryApiSecret"] ?? "";
-
         // Folders
         public readonly string _archiveFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["ArchiveFolder"] ?? "");
 
@@ -65,6 +59,7 @@ namespace AutoPhotoEditor
 
         private readonly Uri placeholder = new Uri("pack://application:,,,/AutoPhotoEditor;component/Resources/placeholder.png");
         private readonly string _pythonScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "cropper.py");
+        private readonly string _pythonRemoveBgScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "bgRemover.py");
         private readonly string _watermarkPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "watermark.png");
 
         private IDatabaseService _databaseService;
@@ -96,11 +91,6 @@ namespace AutoPhotoEditor
             ImageScaleTransform.ScaleX = 1;
             ImageScaleTransform.ScaleY = 1;
 
-            var account = new Account(_cloudName, _apiKey, _apiSecret);
-            var cloudinary = new Cloudinary(account) { Api = { Timeout = 150000 } };
-
-            _imageService = new ImageProcessingService(cloudinary, _inputFolder, _tempFolder, _outputFolder, _outputFolderWithoutLogo, _archiveFolder, _pythonScriptPath, _watermarkPath);
-
             var xlLogin = new XlLogin
             {
                 ApiVersion = _xlApiVersion,
@@ -111,6 +101,7 @@ namespace AutoPhotoEditor
                 WithoutInterface = 1
             };
 
+            _imageService = new ImageProcessingService(_inputFolder, _tempFolder, _outputFolder, _outputFolderWithoutLogo, _archiveFolder, _pythonScriptPath, _watermarkPath, _pythonRemoveBgScriptPath);
             _xlService = new XlService(xlLogin);
             _databaseService = new DatabaseService(_connectionString);
         }

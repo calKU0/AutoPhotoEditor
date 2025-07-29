@@ -41,11 +41,10 @@
                       MouseUp="ImageGrid_MouseUp">
                         <Image x:Name="DownloadedImage" RenderTransformOrigin="0,0" Stretch="None" Loaded="DownloadedImage_Loaded">
                             <Image.LayoutTransform>
-                                <ScaleTransform x:Name="ImageScaleTransform" ScaleX="1" ScaleY="1"/>
+                                <ScaleTransform x:Name="ImageScaleTransform" ScaleX="1" ScaleY="1" />
                             </Image.LayoutTransform>
                         </Image>
                     </Grid>
-
                 </ScrollViewer>
 
                 <!-- Loading overlay stays on top -->
@@ -55,7 +54,7 @@
                            VerticalAlignment="Center"
                            HorizontalAlignment="Center"
                            gif:ImageBehavior.AnimatedSource="pack://application:,,,/AutoPhotoEditor;component/Resources/loading-spinner.gif"
-                           gif:ImageBehavior.RepeatBehavior="Forever"/>
+                           gif:ImageBehavior.RepeatBehavior="Forever" />
                         <TextBlock x:Name="LoadingStatusText"
                                Opacity="0"
                                VerticalAlignment="Bottom"
@@ -65,7 +64,7 @@
                                FontSize="20"
                                FontWeight="Bold"
                                Text="Ładowanie..."
-                               Visibility="Visible"/>
+                               Visibility="Visible" />
                     </StackPanel>
                 </Grid>
             </Grid>
@@ -81,7 +80,7 @@
                     Effect="{DynamicResource DropShadowEffect}">
 
                 <StackPanel>
-                    <TextBlock Text="Kontrolki" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
+                    <TextBlock Text="Kontrolki" FontSize="20" FontWeight="Bold" Margin="0,0,0,20" />
 
                     <Button x:Name="OpenWithPsButton"
                         Height="50"
@@ -91,10 +90,10 @@
                         Style="{StaticResource PrimaryButtonStyle}">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                             <Image Source="pack://application:,,,/AutoPhotoEditor;component/Resources/photoshop-icon.png"
-                                Width="25" Height="25" Margin="0,0,8,0"/>
+                                Width="25" Height="25" Margin="0,0,8,0" />
                             <TextBlock Text="Otwórz w Ps"
                        VerticalAlignment="Center"
-                       Foreground="White"/>
+                       Foreground="White" />
                         </StackPanel>
                     </Button>
 
@@ -106,13 +105,12 @@
                         Style="{StaticResource SuccessButtonStyle}">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                             <Image Source="pack://application:,,,/AutoPhotoEditor;component/Resources/xl-icon.png"
-                                Width="20" Height="20" Margin="0,0,8,0"/>
+                                Width="20" Height="20" Margin="0,0,8,0" />
                             <TextBlock Text="Zapisz do Xla"
                        VerticalAlignment="Center"
-                       Foreground="White"/>
+                       Foreground="White" />
                         </StackPanel>
                     </Button>
-
 
                     <Button x:Name="SaveButton"
                             Content="💾  Zapisz"
@@ -120,14 +118,14 @@
                             Margin="0,0,0,10"
                             Click="SaveButton_Click"
                             IsEnabled="False"
-                            Style="{StaticResource SuccessButtonStyle}"/>
+                            Style="{StaticResource SuccessButtonStyle}" />
 
                     <Button x:Name="DeleteButton"
                             Content="🗑  Odrzuć"
                             Height="50"
                             Click="DeleteButton_Click"
                             IsEnabled="False"
-                            Style="{StaticResource DangerButtonStyle}"/>
+                            Style="{StaticResource DangerButtonStyle}" />
                 </StackPanel>
             </Border>
 
@@ -141,13 +139,13 @@
                     Effect="{DynamicResource DropShadowEffect}">
 
                 <StackPanel>
-                    <TextBlock Text="Opcje" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
+                    <TextBlock Text="Opcje" FontSize="20" FontWeight="Bold" Margin="0,0,0,20" />
 
                     <CheckBox x:Name="RemoveBackgroundCheckbox" Content="Usuń tło" Margin="0,0,0,10" IsChecked="True" />
                     <CheckBox x:Name="CropCheckbox" Content="Kadruj" Margin="0,0,0,10" IsChecked="True" />
-                    <CheckBox x:Name="WatermarkCheckbox" Content="Dodaj znak wodny" Margin="0,0,0,10" IsChecked="True"/>
+                    <CheckBox x:Name="WatermarkCheckbox" Content="Dodaj znak wodny" Margin="0,0,0,10" IsChecked="True" />
 
-                    <TextBlock Text="Rozszerzenie" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                    <TextBlock Text="Rozszerzenie" FontWeight="SemiBold" Margin="0,0,0,5" />
                     <ComboBox x:Name="FileExtensionCombobox">
                         <ComboBoxItem IsSelected="True">jpg</ComboBoxItem>
                         <ComboBoxItem>png</ComboBoxItem>

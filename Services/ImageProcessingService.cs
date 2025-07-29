@@ -18,26 +18,25 @@ namespace AutoPhotoEditor.Services
 {
     public class ImageProcessingService : IImageProcessingService
     {
-        private readonly Cloudinary _cloudinary;
         private readonly string _inputFolder;
         private readonly string _tempFolder;
         private readonly string _outputFolder;
         private readonly string _outputFolderWithoutWatermark;
         private readonly string _archiveFolder;
         private readonly string _pythonScriptPath;
+        private readonly string _pythonRemoveBgScriptPath;
         private readonly string _watermarkPath;
 
         public ImageProcessingService(
-            Cloudinary cloudinary,
             string inputFolder,
             string tempFolder,
             string outputFolder,
             string outputFolderWithoutWatermark,
             string archiveFolder,
             string pythonScriptPath,
-            string watermarkPath)
+            string watermarkPath,
+            string pythonRemoveBgScriptPath)
         {
-            _cloudinary = cloudinary;
             _inputFolder = inputFolder;
             _tempFolder = tempFolder;
             _outputFolder = outputFolder;
@@ -45,6 +44,7 @@ namespace AutoPhotoEditor.Services
             _archiveFolder = archiveFolder;
             _pythonScriptPath = pythonScriptPath;
             _watermarkPath = watermarkPath;
+            _pythonRemoveBgScriptPath = pythonRemoveBgScriptPath;
         }
 
         public async Task<(string? withWatermark, string withoutWatermark)> ProcessImageAsync(
@@ -86,36 +86,9 @@ namespace AutoPhotoEditor.Services
 
             if (removeBg)
             {
-                await using var memStream = new MemoryStream();
-                await image.SaveAsync(memStream, new PngEncoder
-                {
-                    CompressionLevel = PngCompressionLevel.BestCompression,
-                    FilterMethod = PngFilterMethod.Adaptive
-                }, token);
-                memStream.Position = 0;
-
-                var uploadParams = new ImageUploadParams
-                {
-                    File = new FileDescription(fileBase + ".png", memStream)
-                };
-
-                statusCallback("Usuwanie tła...");
-                var uploadResult = await Task.Run(() => _cloudinary.Upload(uploadParams), token);
-                if (uploadResult.StatusCode != HttpStatusCode.OK || uploadResult.SecureUrl == null)
-                    throw new Exception("Cloudinary upload failed.");
-
-                cloudinaryPublicId = uploadResult.PublicId;
-
-                string transformedUrl = _cloudinary.Api.UrlImgUp
-                    .Transform(new Transformation().Named("BG+Watermark"))
-                    .BuildUrl(uploadResult.PublicId + ".png");
-
-                using var httpClient = new HttpClient();
-                byte[] cloudPng = await httpClient.GetByteArrayAsync(transformedUrl, token);
-
+                statusCallback("Usuwam tło...");
                 bgRemovedPath = Path.Combine(_tempFolder, fileBase + "_bg_removed.png");
-                await File.WriteAllBytesAsync(bgRemovedPath, cloudPng, token);
-
+                RunPythonRemoveBg(filePath, bgRemovedPath);
                 currentImagePath = bgRemovedPath;
             }
 
@@ -159,9 +132,6 @@ namespace AutoPhotoEditor.Services
 
             statusCallback("Zakończono.");
 
-            if (cloudinaryPublicId != null)
-                _cloudinary.Destroy(new DeletionParams(cloudinaryPublicId));
-
             return (addWatermark ? withWatermarkPath : null, withoutWatermarkPath);
         }
 
@@ -199,6 +169,31 @@ namespace AutoPhotoEditor.Services
                 Debug.WriteLine(error);
                 Debug.WriteLine(outputLog);
                 throw new Exception($"Python error: {error}");
+            }
+        }
+
+        private void RunPythonRemoveBg(string inputPath, string outputPath)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "rembg",
+                Arguments = $"i -m isnet-general-use -a \"{inputPath}\" \"{outputPath}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            string error = process.StandardError.ReadToEnd();
+            string outputLog = process.StandardOutput.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                Debug.WriteLine(error);
+                Debug.WriteLine(outputLog);
+                throw new Exception($"rembg CLI error: {error}");
             }
         }
     }
