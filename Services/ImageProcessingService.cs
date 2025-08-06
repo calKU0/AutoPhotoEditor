@@ -1,18 +1,11 @@
 ﻿using AutoPhotoEditor.Helpers;
 using AutoPhotoEditor.Interfaces;
-using CloudinaryDotNet;
-using CloudinaryDotNet.Actions;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Net;
-using System.Net.Http;
-using System.Windows;
-using Size = SixLabors.ImageSharp.Size;
 
 namespace AutoPhotoEditor.Services
 {
@@ -177,7 +170,7 @@ namespace AutoPhotoEditor.Services
             var psi = new ProcessStartInfo
             {
                 FileName = "rembg",
-                Arguments = $"i -m isnet-general-use -a \"{inputPath}\" \"{outputPath}\"",
+                Arguments = $"i -m u2net -a \"{inputPath}\" \"{outputPath}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,

@@ -1,17 +1,8 @@
 ﻿using AutoPhotoEditor.Interfaces;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using AutoPhotoEditor.Models;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 using MessageBox = ModernWpf.MessageBox;
 
 namespace AutoPhotoEditor
@@ -21,26 +12,26 @@ namespace AutoPhotoEditor
     /// </summary>
     public partial class ProductCodeDialog : Window
     {
-        public int? ProductId { get; private set; }
+        public Product Product { get; private set; } = new();
         private readonly IDatabaseService _databaseService;
         private readonly IXlService _xlService;
-        private int productId = 0;
+
         public ProductCodeDialog(IDatabaseService databaseService, IXlService xlService)
         {
             InitializeComponent();
             _databaseService = databaseService;
             _xlService = xlService;
         }
+
         private async void Ok_Click(object sender, RoutedEventArgs e)
         {
-            if (productId <= 0)
+            if (Product.Id <= 0)
             {
-                productId = await _databaseService.FindProductByEANOrCode(ProductCodeTextBox.Text);
+                Product = await _databaseService.FindProductByEANOrCodeAsync(ProductCodeTextBox.Text);
             }
 
-            if (productId > 0)
+            if (Product is not null && Product.Id > 0)
             {
-                ProductId = productId;
                 DialogResult = true;
                 Close();
             }
@@ -57,8 +48,8 @@ namespace AutoPhotoEditor
 
             if (selectedId > 0)
             {
-                string code = await _databaseService.FindProductById(selectedId);
-                ProductCodeTextBox.Text = code;
+                Product = await _databaseService.FindProductByIdAsync(selectedId);
+                ProductCodeTextBox.Text = Product.Code;
             }
             else
             {
@@ -74,9 +65,9 @@ namespace AutoPhotoEditor
 
         private void ProductCodeTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (productId != 0)
+            if (Product.Id != 0)
             {
-                productId = 0;
+                Product = new();
             }
         }
 
@@ -85,18 +76,24 @@ namespace AutoPhotoEditor
             ProductCodeTextBox.Focus();
         }
 
-        private void Window_Closed(object sender, EventArgs e)
+        private async void ProductCodeTextBox_KeyDown(object sender, KeyEventArgs e)
         {
-            try
+            if (e.Key == Key.Enter)
             {
-                if (_xlService.IsLogged)
+                if (Product.Id <= 0)
                 {
-                    _xlService.Logout();
+                    Product = await _databaseService.FindProductByEANOrCodeAsync(ProductCodeTextBox.Text);
                 }
-            }
-            catch (Exception logoutEx)
-            {
-                MessageBox.Show($"Nie udało się wylogować z XLa. {logoutEx.Message}", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
+
+                if (Product is not null && Product.Id > 0)
+                {
+                    DialogResult = true;
+                    Close();
+                }
+                else
+                {
+                    MessageBox.Show("Nie znaleziono produktu w bazie danych.", "Błąd", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
             }
         }
     }

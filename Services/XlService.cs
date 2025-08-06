@@ -1,12 +1,6 @@
 ﻿using AutoPhotoEditor.Interfaces;
 using AutoPhotoEditor.Models;
 using cdn_api;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace AutoPhotoEditor.Services
 {
@@ -76,6 +70,5 @@ namespace AutoPhotoEditor.Services
 
             return xLGIDGrupaInfo.GIDNumer;
         }
-
     }
 }

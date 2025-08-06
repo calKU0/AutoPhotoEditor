@@ -1,102 +1,175 @@
 ﻿using AutoPhotoEditor.Interfaces;
+using AutoPhotoEditor.Models;
 using Microsoft.Data.SqlClient;
-using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace AutoPhotoEditor.Services
 {
     public class DatabaseService : IDatabaseService
     {
         private readonly string _connectionString;
+
         public DatabaseService(string connectionString)
         {
             _connectionString = connectionString;
         }
-        public async Task<bool> AttachImageToProduct(int productId, string extension, byte[] imageBytes)
+
+        public async Task<int?> AttachImageToProductAsync(int productId, string extension, byte[] imageBytes)
         {
-            bool success = false;
+            if (productId <= 0) throw new ArgumentOutOfRangeException(nameof(productId));
+            if (string.IsNullOrWhiteSpace(extension)) throw new ArgumentException("Extension required", nameof(extension));
+            if (imageBytes is null) throw new ArgumentNullException(nameof(imageBytes));
 
-            using (SqlConnection connection = new SqlConnection(_connectionString))
+            const string procName = "dbo.DodajZdjecieDoTowaru";
+
+            using var connection = new SqlConnection(_connectionString);
+            using var command = connection.CreateCommand();
+            command.CommandText = procName;
+            command.CommandType = CommandType.StoredProcedure;
+
+            // Input params
+            command.Parameters.Add(new SqlParameter("@twrId", SqlDbType.Int) { Value = productId });
+            command.Parameters.Add(new SqlParameter("@zalacznikRozszerzenie", SqlDbType.VarChar, 29) { Value = extension });
+
+            var dataParam = new SqlParameter("@zalacznikDane", SqlDbType.VarBinary, -1)
             {
-                using (var command = connection.CreateCommand())
-                {
-                    command.CommandText = "dbo.DodajZdjecieDoTowaru";
-                    command.CommandType = CommandType.StoredProcedure;
+                Value = imageBytes
+            };
+            command.Parameters.Add(dataParam);
 
-                    command.Parameters.Add(new SqlParameter("@twrId", productId));
-                    command.Parameters.Add(new SqlParameter("@zalacznikRozszerzenie", extension));
-                    command.Parameters.Add("@zalacznikDane", SqlDbType.VarBinary, imageBytes.Length).Value = imageBytes;
+            var outDabId = new SqlParameter("@DabId", SqlDbType.Int)
+            {
+                Direction = ParameterDirection.Output
+            };
+            command.Parameters.Add(outDabId);
 
-                    // Add return value parameter
-                    var returnParameter = new SqlParameter("@ReturnVal", SqlDbType.Int);
-                    returnParameter.Direction = ParameterDirection.ReturnValue;
-                    command.Parameters.Add(returnParameter);
+            // Return value
+            var retParam = new SqlParameter("@RETURN_VALUE", SqlDbType.Int)
+            {
+                Direction = ParameterDirection.ReturnValue
+            };
+            command.Parameters.Add(retParam);
 
-                    await connection.OpenAsync();
+            await connection.OpenAsync().ConfigureAwait(false);
+            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
 
-                    await command.ExecuteNonQueryAsync();
-
-                    int result = (int)returnParameter.Value;
-
-                    success = (result == 0);
-                }
+            int returnCode = retParam.Value == DBNull.Value ? -999 : (int)retParam.Value;
+            if (returnCode != 0)
+            {
+                return null;
             }
-            return success;
 
+            if (outDabId.Value == DBNull.Value) return null;
+            return (int?)outDabId.Value;
         }
 
-        public async Task<int> FindProductByEANOrCode(string code)
+        public async Task<bool> DetachImageFromProductAsync(int dabId)
         {
-            int resultId = 0;
-            using (SqlConnection connection = new SqlConnection(_connectionString))
-            {
-                using (var command = connection.CreateCommand())
-                {
-                    string query = "select top 1 twr_gidnumer from cdn.twrkarty where twr_kod = @code or twr_ean = @code";
+            if (dabId <= 0) throw new ArgumentOutOfRangeException(nameof(dabId));
 
-                    command.CommandType = CommandType.Text;
-                    command.CommandText = query;
+            const string procName = "dbo.UsunZdjecieTowaru";
 
-                    command.Parameters.Add(new SqlParameter("@code", code));
+            using var connection = new SqlConnection(_connectionString);
+            using var command = connection.CreateCommand();
+            command.CommandText = procName;
+            command.CommandType = CommandType.StoredProcedure;
 
-                    await connection.OpenAsync();
+            command.Parameters.Add(new SqlParameter("@DabId", SqlDbType.Int) { Value = dabId });
 
-                    var result = await command.ExecuteScalarAsync();
-                    if (result is not null)
-                        resultId = (int)result;
-                }
-            }
+            var retParam = new SqlParameter("@RETURN_VALUE", SqlDbType.Int) { Direction = ParameterDirection.ReturnValue };
+            command.Parameters.Add(retParam);
 
-            return resultId;
+            await connection.OpenAsync().ConfigureAwait(false);
+            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+
+            int returnCode = retParam.Value == DBNull.Value ? -999 : (int)retParam.Value;
+            return returnCode == 0;
         }
 
-        public async Task<string> FindProductById(int id)
+        public async Task<Product?> FindProductByEANOrCodeAsync(string code)
         {
-            string resultCode = string.Empty;
-            using (SqlConnection connection = new SqlConnection(_connectionString))
+            if (string.IsNullOrWhiteSpace(code))
+                return null;
+
+            const string query = @"
+            SELECT TOP 1
+                twr_gidnumer AS Id,
+                twr_kod      AS Code,
+                twr_nazwa    AS Name,
+                twr_ean      AS EAN
+            FROM cdn.twrkarty
+            WHERE twr_kod = @code OR twr_ean = @code;";
+
+            using (var connection = new SqlConnection(_connectionString))
+            using (var command = connection.CreateCommand())
             {
-                using (var command = connection.CreateCommand())
+                command.CommandText = query;
+                command.CommandType = CommandType.Text;
+
+                // adjust size/type if you know column type/length
+                var p = new SqlParameter("@code", SqlDbType.NVarChar, 128) { Value = code.Trim() };
+                command.Parameters.Add(p);
+
+                await connection.OpenAsync().ConfigureAwait(false);
+
+                using (var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow).ConfigureAwait(false))
                 {
-                    string query = "select top 1 twr_kod from cdn.twrkarty where twr_gidnumer = @id";
+                    if (!await reader.ReadAsync().ConfigureAwait(false))
+                        return null;
 
-                    command.CommandType = CommandType.Text;
-                    command.CommandText = query;
+                    int id = reader["Id"] is DBNull ? 0 : Convert.ToInt32(reader["Id"]);
+                    string codeVal = reader["Code"] is DBNull ? string.Empty : reader["Code"].ToString()!;
+                    string nameVal = reader["Name"] is DBNull ? string.Empty : reader["Name"].ToString()!;
+                    string eanVal = reader["EAN"] is DBNull ? string.Empty : reader["EAN"].ToString()!;
 
-                    command.Parameters.Add(new SqlParameter("@id", id));
-
-                    await connection.OpenAsync();
-
-                    var result = await command.ExecuteScalarAsync();
-                    if (result is not null)
-                        resultCode = (string)result;
+                    return new Product
+                    {
+                        Id = id,
+                        Code = codeVal,
+                        Name = nameVal,
+                        EAN = eanVal
+                    };
                 }
             }
+        }
 
-            return resultCode;
+        public async Task<Product?> FindProductByIdAsync(int id)
+        {
+            if (id <= 0) return null;
+
+            const string query = @"
+                SELECT TOP 1
+                    twr_gidnumer AS Id,
+                    twr_kod      AS Code,
+                    twr_nazwa    AS Name,
+                    twr_ean      AS EAN
+                FROM cdn.twrkarty
+                WHERE twr_gidnumer = @id;";
+
+            using var connection = new SqlConnection(_connectionString);
+            using var command = connection.CreateCommand();
+            command.CommandText = query;
+            command.CommandType = CommandType.Text;
+            command.Parameters.Add(new SqlParameter("@id", SqlDbType.Int) { Value = id });
+
+            await connection.OpenAsync().ConfigureAwait(false);
+
+            using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow).ConfigureAwait(false);
+            if (!await reader.ReadAsync().ConfigureAwait(false))
+                return null;
+
+            int idVal = reader["Id"] is DBNull ? 0 : Convert.ToInt32(reader["Id"]);
+            string code = reader["Code"] is DBNull ? string.Empty : reader["Code"].ToString()!;
+            string name = reader["Name"] is DBNull ? string.Empty : reader["Name"].ToString()!;
+            string ean = reader["EAN"] is DBNull ? string.Empty : reader["EAN"].ToString()!;
+
+            return new Product
+            {
+                Id = idVal,
+                Code = code,
+                Name = name,
+                EAN = ean
+            };
         }
     }
 }

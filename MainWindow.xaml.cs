@@ -46,13 +46,13 @@ namespace AutoPhotoEditor
         public readonly string _xlPassword = ConfigurationManager.AppSettings["XLPassword"] ?? "";
 
         // Folders
-        public readonly string _archiveFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["ArchiveFolder"] ?? "");
+        public readonly string _archiveFolder = ConfigurationManager.AppSettings["ArchiveFolder"] ?? "";
 
-        public readonly string _tempFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["TempFolder"] ?? "");
-        public readonly string _inputFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["InputFolder"] ?? "");
-        public readonly string _outputFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["OutputWithWatermark"] ?? "");
-        public readonly string _outputFolderWithoutLogo = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["OutputWithoutWatermark"] ?? "");
-        public readonly string _manualEditsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationManager.AppSettings["ManualEditsFolder"] ?? "");
+        public readonly string _tempFolder = ConfigurationManager.AppSettings["TempFolder"] ?? "";
+        public readonly string _inputFolder = ConfigurationManager.AppSettings["InputFolder"] ?? "";
+        public readonly string _outputFolder = ConfigurationManager.AppSettings["OutputWithWatermark"] ?? "";
+        public readonly string _outputFolderWithoutLogo = ConfigurationManager.AppSettings["OutputWithoutWatermark"] ?? "";
+        public readonly string _manualEditsFolder = ConfigurationManager.AppSettings["ManualEditsFolder"] ?? "";
         public readonly string _pathToPhotoshop = ConfigurationManager.AppSettings["PathToPhotoshop"] ?? "";
 
         #endregion Secrets
@@ -80,6 +80,7 @@ namespace AutoPhotoEditor
 
         private bool _isFading = false;
         private string _lastMessage = "";
+        private Product product;
 
         public MainWindow()
         {
@@ -335,29 +336,49 @@ namespace AutoPhotoEditor
                 };
 
                 bool? result = dialog.ShowDialog();
-                if (result != true || dialog.ProductId == null)
+                Product product = dialog.Product;
+                if (result != true || product.Id == 0)
                 {
                     MessageBox.Show("Anulowano lub nie podano kodu produktu.", "Anulowano", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
-                int productId = dialog.ProductId.Value;
-
-                if (productId != 0 && File.Exists(_lastProcessedImagePath))
+                if (product.Id != 0 && File.Exists(_lastProcessedImagePath))
                 {
                     string extension = Path.GetExtension(_lastProcessedImagePath);
                     byte[] imageBytes = File.ReadAllBytes(_lastProcessedImagePath);
 
-                    bool success = await _databaseService.AttachImageToProduct(productId, extension, imageBytes);
+                    int? imageId = await _databaseService.AttachImageToProductAsync(product.Id, extension, imageBytes);
 
-                    if (!success)
+                    if (imageId is null || imageId <= 0)
                     {
                         MessageBox.Show("Nie udało się podpiąć zdjęcia do karty towarowej.", "Niepowodzenie", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
-                }
 
-                MessageBox.Show("Zapisano oraz podpięto zdjęcie do karty towarowej.", "Informacja", MessageBoxButton.OK, MessageBoxImage.Information);
+                    var resultDialog = new ProductAddResult(_xlService, product)
+                    {
+                        Owner = this
+                    };
+
+                    bool? resultAdd = resultDialog.ShowDialog();
+                    if (resultAdd == false)
+                    {
+                        if (imageId is int id)
+                        {
+                            bool success = await _databaseService.DetachImageFromProductAsync(id);
+                            if (success)
+                            {
+                                MessageBox.Show("Odpięto zdjecie od karty towarowej.", "Niepowodzenie", MessageBoxButton.OK, MessageBoxImage.Information);
+                            }
+                            else
+                            {
+                                MessageBox.Show("Nie udało się odpiąć zdjęcia od karty towarowej. Spróbuj zrobić to ręcznie", "Niepowodzenie", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            }
+                        }
+                        return;
+                    }
+                }
 
                 // Clear state
                 DownloadedImage.Source = new BitmapImage(placeholder);

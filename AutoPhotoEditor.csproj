@@ -7,6 +7,7 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<UseWPF>true</UseWPF>
 		<PlatformTarget>x86</PlatformTarget>
+		<ApplicationIcon>icon.ico</ApplicationIcon>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -37,6 +38,7 @@
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Resource>
 	  <Resource Include="Resources\xl-icon.png" />
+	  <Content Include="icon.ico" />
 	  <Content Include="Resources\watermark.png">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Content>

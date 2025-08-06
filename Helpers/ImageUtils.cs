@@ -1,9 +1,7 @@
 ﻿using ImageMagick;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
-using System;
 using System.IO;
 
 namespace AutoPhotoEditor.Helpers
@@ -37,6 +35,7 @@ namespace AutoPhotoEditor.Helpers
                 return Image.Load<Rgba32>(ms);
             }
         }
+
         public static Image<Rgba32> LoadAndResizeImage(string path)
         {
             if (!File.Exists(path))

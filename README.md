@@ -1,5 +1,7 @@
 # AutoPhotoEditor
 
+> 💼 **Commercial Project** — part of a private or client-facing initiative.
+
 AutoPhotoEditor is a powerful and automated photo processing pipeline built using Python and WPF. This tool monitors a designated folder for new image files (RAW, JPG, PNG), performs a series of transformations, and integrates with Cloudinary and Comarch ERP XL for streamlined image management.
 
 ## Features

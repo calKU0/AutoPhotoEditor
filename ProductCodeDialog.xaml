@@ -9,22 +9,21 @@
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        WindowStyle="SingleBorderWindow" Closed="Window_Closed" Loaded="Window_Loaded">
+        WindowStyle="SingleBorderWindow" Loaded="Window_Loaded">
     <Grid Margin="20,10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Text="Kod lub EAN:" FontWeight="Bold" Margin="0,0,0,5"/>
-        <TextBox x:Name="ProductCodeTextBox" Grid.Row="1"  Height="30" TextChanged="ProductCodeTextBox_TextChanged"/>
+        <TextBlock Text="Kod lub EAN:" FontWeight="Bold" Margin="0,0,0,5" />
+        <TextBox x:Name="ProductCodeTextBox" Grid.Row="1"  Height="30" TextChanged="ProductCodeTextBox_TextChanged" KeyDown="ProductCodeTextBox_KeyDown" />
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
-            <Button Content="OK" Width="80" Margin="0,0,10,0" Click="Ok_Click" Style="{StaticResource SuccessButtonStyle}"/>
-            <Button Content="Wybierz z listy" Margin="0,0,10,0" Click="OpenList_Click" Style="{StaticResource PrimaryButtonStyle}"/>
-            <Button Content="Anuluj" Width="80" Click="Cancel_Click" Style="{StaticResource DangerButtonStyle}"/>
+            <Button Content="Dodaj" Width="80" Margin="0,0,10,0" Click="Ok_Click" Style="{StaticResource SuccessButtonStyle}" />
+            <Button Content="Wybierz z listy" Margin="0,0,10,0" Click="OpenList_Click" Style="{StaticResource PrimaryButtonStyle}" />
+            <Button Content="Anuluj" Width="80" Click="Cancel_Click" Style="{StaticResource DangerButtonStyle}" />
         </StackPanel>
-
     </Grid>
 </Window>
