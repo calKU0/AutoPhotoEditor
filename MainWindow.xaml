@@ -5,14 +5,14 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:gif="http://wpfanimatedgif.codeplex.com"
         mc:Ignorable="d"
-        Title="Auto Photo Editor" Height="1080" Width="1920"
+        Title="Auto Photo Editor"
         Background="#F5F5F5"
         FontFamily="Segoe UI" FontSize="16" WindowState="Maximized" WindowStartupLocation="CenterScreen" Loaded="Window_Loaded" Closed="Window_Closed">
 
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="250" />
+            <ColumnDefinition Width="300" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -20,24 +20,26 @@
 
         <!-- Left image area with zoom & styling -->
         <Border Grid.Column="0"
-                Margin="20"
-                Background="White"
-                CornerRadius="10"
-                Padding="10"
-                Effect="{DynamicResource DropShadowEffect}">
+            Margin="20"
+            Background="White"
+            CornerRadius="10"
+            Padding="10"
+            Effect="{DynamicResource DropShadowEffect}">
 
             <Grid>
                 <ScrollViewer x:Name="ImageScrollViewer"
                     HorizontalScrollBarVisibility="Auto"
                     VerticalScrollBarVisibility="Auto"
                     PreviewMouseWheel="ImageScrollViewer_PreviewMouseWheel">
-                    <!-- Disable built-in panning -->
 
-                    <!-- Use Grid container instead of Canvas -->
                     <Grid x:Name="ImageContainerGrid" Background="Transparent"
-                      MouseDown="ImageGrid_MouseDown"
-                      MouseMove="ImageGrid_MouseMove"
-                      MouseUp="ImageGrid_MouseUp">
+                        MouseDown="ImageGrid_MouseDown"
+                        MouseMove="ImageGrid_MouseMove"
+                        MouseUp="ImageGrid_MouseUp"
+                        AllowDrop="True"
+                        Drop="ImageContainerGrid_Drop"
+                        DragEnter="ImageContainerGrid_DragEnter"
+                        DragLeave="ImageContainerGrid_DragLeave">
                         <Image x:Name="DownloadedImage" RenderTransformOrigin="0,0" Stretch="None" Loaded="DownloadedImage_Loaded">
                             <Image.LayoutTransform>
                                 <ScaleTransform x:Name="ImageScaleTransform" ScaleX="1" ScaleY="1" />
@@ -46,13 +48,27 @@
                     </Grid>
                 </ScrollViewer>
 
+                <!-- Drag Drop Overlay -->
+                <Grid x:Name="DragDropOverlay"
+                    Background="#80000000"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False">
+
+                    <TextBlock Text="Przeciągnij plik tutaj"
+                       Foreground="White"
+                       FontSize="30"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+                </Grid>
+
                 <!-- Loading overlay stays on top -->
                 <Grid x:Name="LoadingOverlay" Background="#80000000" Visibility="Collapsed">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <Image Width="200" Height="200"
                            VerticalAlignment="Center"
                            HorizontalAlignment="Center"
-                           gif:ImageBehavior.AnimatedSource="pack://application:,,,/AutoPhotoEditor;component/Resources/loading-spinner.gif"
+                           gif:ImageBehavior.AnimatedSource="/Resources/loading-spinner.gif"
                            gif:ImageBehavior.RepeatBehavior="Forever" />
                         <TextBlock x:Name="LoadingStatusText"
                                Opacity="0"
@@ -68,9 +84,10 @@
                 </Grid>
             </Grid>
         </Border>
-        <StackPanel Grid.Column="1"  VerticalAlignment="Top">
-            <!-- Button Panel -->
-            <Border Grid.Column="1"
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Grid.Column="1"  VerticalAlignment="Top">
+                <!-- Button Panel -->
+                <Border Grid.Column="1"
                     VerticalAlignment="Top"
                     Margin="20"
                     Background="White"
@@ -78,58 +95,72 @@
                     Padding="20"
                     Effect="{DynamicResource DropShadowEffect}">
 
-                <StackPanel>
-                    <TextBlock Text="Kontrolki" FontSize="20" FontWeight="Bold" Margin="0,0,0,20" />
+                    <StackPanel>
+                        <TextBlock Text="Kontrolki" FontSize="20" FontWeight="Bold" Margin="0,0,0,20" />
 
-                    <Button x:Name="OpenWithPsButton"
-                        Height="50"
-                        Margin="0,0,0,10"
-                        Click="OpenWithPs_Click"
-                        IsEnabled="False"
-                        Style="{StaticResource PrimaryButtonStyle}">
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                            <Image Source="pack://application:,,,/AutoPhotoEditor;component/Resources/photoshop-icon.png"
-                                Width="25" Height="25" Margin="0,0,8,0" />
-                            <TextBlock Text="Otwórz w Ps"
-                       VerticalAlignment="Center"
-                       Foreground="White" />
-                        </StackPanel>
-                    </Button>
+                        <Button x:Name="OpenWithPsButton"
+                            Height="50"
+                            Margin="0,0,0,10"
+                            Click="OpenWithPs_Click"
+                            IsEnabled="False"
+                            Style="{StaticResource PrimaryButtonStyle}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Image Source="/Resources/photoshop-icon.png" Width="25" Height="25" Margin="0,0,8,0" />
+                                <TextBlock Text="Otwórz w Ps" VerticalAlignment="Center" Foreground="White" />
+                            </StackPanel>
+                        </Button>
 
-                    <Button x:Name="SaveToXlButton"
-                        Height="50"
-                        Margin="0,0,0,10"
-                        Click="SaveButtonToXl_Click"
-                        IsEnabled="False"
-                        Style="{StaticResource SuccessButtonStyle}">
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                            <Image Source="pack://application:,,,/AutoPhotoEditor;component/Resources/xl-icon.png"
-                                Width="20" Height="20" Margin="0,0,8,0" />
-                            <TextBlock Text="Zapisz do Xla"
-                       VerticalAlignment="Center"
-                       Foreground="White" />
-                        </StackPanel>
-                    </Button>
+                        <Button x:Name="SaveToXlButton"
+                            Height="50"
+                            Margin="0,0,0,10"
+                            Click="SaveButtonToXl_Click"
+                            IsEnabled="False"
+                            Style="{StaticResource SuccessButtonStyle}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Image Source="/Resources/xl-icon.png"  Width="20" Height="20" Margin="0,0,8,0" />
+                                <TextBlock Text="Zapisz do Xla" VerticalAlignment="Center" Foreground="White" />
+                            </StackPanel>
+                        </Button>
 
-                    <Button x:Name="SaveButton"
-                            Content="💾  Zapisz"
+                        <Button x:Name="SaveButton"
                             Height="50"
                             Margin="0,0,0,10"
                             Click="SaveButton_Click"
                             IsEnabled="False"
-                            Style="{StaticResource SuccessButtonStyle}" />
+                            Style="{StaticResource SuccessButtonStyle}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Image Source="/Resources/save-icon.png" Width="24" Height="24" Margin="0,0,8,0" />
+                                <TextBlock Text="Zapisz" VerticalAlignment="Center" Foreground="White" />
+                            </StackPanel>
+                        </Button>
 
-                    <Button x:Name="DeleteButton"
-                            Content="🗑  Odrzuć"
+                        <Button x:Name="RefreshButton"
+                            Height="50"
+                            Click="RefreshButton_Click"
+                            IsEnabled="False"
+                            Margin="0,0,0,10"
+                            Style="{StaticResource PrimaryButtonStyle}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Image Source="/Resources/refresh-icon.png"  Width="24" Height="24" Margin="0,0,8,0" />
+                                <TextBlock Text="Ponów" VerticalAlignment="Center" Foreground="White" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="DeleteButton"
                             Height="50"
                             Click="DeleteButton_Click"
                             IsEnabled="False"
-                            Style="{StaticResource DangerButtonStyle}" />
-                </StackPanel>
-            </Border>
+                            Style="{StaticResource DangerButtonStyle}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Image Source="/Resources/delete-icon.png"  Width="25" Height="25" Margin="0,0,8,0" />
+                                <TextBlock Text="Usuń" VerticalAlignment="Center" Foreground="White" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Border>
 
-            <!-- Options Panel -->
-            <Border Grid.Column="1"
+                <!-- Options Panel -->
+                <Border Grid.Column="1"
                     VerticalAlignment="Top"
                     Margin="20"
                     Background="White"
@@ -137,20 +168,130 @@
                     Padding="20"
                     Effect="{DynamicResource DropShadowEffect}">
 
-                <StackPanel>
-                    <TextBlock Text="Opcje" FontSize="20" FontWeight="Bold" Margin="0,0,0,20" />
+                    <StackPanel>
+                        <TextBlock Text="Opcje" FontSize="20" FontWeight="Bold" Margin="0,0,0,20" />
 
-                    <CheckBox x:Name="RemoveBackgroundCheckbox" Content="Usuń tło" Margin="0,0,0,10" IsChecked="True" />
-                    <CheckBox x:Name="CropCheckbox" Content="Kadruj" Margin="0,0,0,10" IsChecked="True" />
-                    <CheckBox x:Name="WatermarkCheckbox" Content="Dodaj znak wodny" Margin="0,0,0,10" IsChecked="True" />
+                        <CheckBox x:Name="RemoveBackgroundCheckbox" Content="Usuń tło" Margin="0,0,0,10" IsChecked="True" />
+                        <CheckBox x:Name="CropCheckbox" Content="Kadruj" Margin="0,0,0,10" IsChecked="True" />
+                        <CheckBox x:Name="ScaleCheckBox" Content="Skaluj" Margin="0,0,0,10" IsChecked="True" />
+                        <CheckBox x:Name="WatermarkCheckbox" Content="Dodaj znak wodny" Margin="0,0,0,10" IsChecked="True" />
 
-                    <TextBlock Text="Rozszerzenie" FontWeight="SemiBold" Margin="0,0,0,5" />
-                    <ComboBox x:Name="FileExtensionCombobox">
-                        <ComboBoxItem IsSelected="True">jpg</ComboBoxItem>
-                        <ComboBoxItem>png</ComboBoxItem>
-                    </ComboBox>
-                </StackPanel>
-            </Border>
-        </StackPanel>
+                        <TextBlock Text="Rozszerzenie" FontWeight="SemiBold" Margin="0,0,0,5" />
+                        <ComboBox x:Name="FileExtensionCombobox">
+                            <ComboBoxItem IsSelected="True">jpg</ComboBoxItem>
+                            <ComboBoxItem>png</ComboBoxItem>
+                        </ComboBox>
+
+                        <TextBlock Text="Model AI" FontWeight="SemiBold" Margin="0,5,0,5" />
+                        <ComboBox x:Name="AiModelCombobox">
+                            <ComboBoxItem IsSelected="True" Tag="u2net">Uniwersalny</ComboBoxItem>
+                            <ComboBoxItem Tag="birefnet-massive">Precyzyjny</ComboBoxItem>
+                        </ComboBox>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1"
+                    VerticalAlignment="Top"
+                    Margin="20"
+                    Background="White"
+                    CornerRadius="10"
+                    Padding="20"
+                    Effect="{DynamicResource DropShadowEffect}">
+                    <StackPanel>
+                        <TextBlock Text="Ścieżki folderów" FontSize="20" FontWeight="Bold" Margin="0,0,0,20" />
+
+                        <!-- Input Folder -->
+                        <StackPanel Margin="0,0,0,15">
+                            <Button Content="📂 Wejściowy"
+                                Style="{StaticResource FolderButtonStyle}"
+                                HorizontalAlignment="Stretch"
+                                Click="SelectFolder_Click"
+                                Tag="InputFolder" />
+                            <TextBlock x:Name="InputFolderText"
+                                VerticalAlignment="Center"
+                                Margin="0,5,0,0"
+                                TextWrapping="Wrap"
+                                FontSize="12"
+                                Foreground="#666" />
+                        </StackPanel>
+
+                        <!-- Archive Folder -->
+                        <StackPanel Margin="0,0,0,15">
+                            <Button Content="📂 Archiwum"
+                                Style="{StaticResource FolderButtonStyle}"
+                                HorizontalAlignment="Stretch"
+                                Click="SelectFolder_Click"
+                                Tag="ArchiveFolder" />
+                            <TextBlock x:Name="ArchiveFolderText"
+                                VerticalAlignment="Center"
+                                Margin="0,5,0,0"
+                                TextWrapping="Wrap"
+                                FontSize="12"
+                                Foreground="#666" />
+                        </StackPanel>
+
+                        <!-- Archive Clean PNG Folder -->
+                        <StackPanel Margin="0,0,0,15">
+                            <Button Content="📂 Czyste PNG"
+                                Style="{StaticResource FolderButtonStyle}"
+                                HorizontalAlignment="Stretch"
+                                Click="SelectFolder_Click"
+                                Tag="ArchiveCleanPngFolder" />
+                            <TextBlock x:Name="ArchiveCleanPngFolderText"
+                                VerticalAlignment="Center"
+                                Margin="0,5,0,0"
+                                TextWrapping="Wrap"
+                                FontSize="12"
+                                Foreground="#666" />
+                        </StackPanel>
+
+                        <!-- Output With Watermark -->
+                        <StackPanel Margin="0,0,0,15">
+                            <Button Content="📂 Z logo"
+                                Style="{StaticResource FolderButtonStyle}"
+                                HorizontalAlignment="Stretch"
+                                Click="SelectFolder_Click"
+                                Tag="OutputWithWatermark" />
+                            <TextBlock x:Name="OutputWithWatermarkText"
+                                VerticalAlignment="Center"
+                                Margin="0,5,0,0"
+                                TextWrapping="Wrap"
+                                FontSize="12"
+                                Foreground="#666" />
+                        </StackPanel>
+
+                        <!-- Output Without Watermark -->
+                        <StackPanel Margin="0,0,0,15">
+                            <Button Content="📂 Bez logo"
+                                Style="{StaticResource FolderButtonStyle}"
+                                HorizontalAlignment="Stretch"
+                                Click="SelectFolder_Click"
+                                Tag="OutputWithoutWatermark" />
+                            <TextBlock x:Name="OutputWithoutWatermarkText"
+                                VerticalAlignment="Center"
+                                Margin="0,5,0,0"
+                                TextWrapping="Wrap"
+                                FontSize="12"
+                                Foreground="#666" />
+                        </StackPanel>
+
+                        <!-- Manual Edits Folder -->
+                        <StackPanel Margin="0,0,0,15">
+                            <Button Content="📂 Manualna edycja"
+                                Style="{StaticResource FolderButtonStyle}"
+                                HorizontalAlignment="Stretch"
+                                Click="SelectFolder_Click"
+                                Tag="ManualEditsFolder" />
+                            <TextBlock x:Name="ManualEditsFolderText"
+                                VerticalAlignment="Center"
+                                Margin="0,5,0,0"
+                                TextWrapping="Wrap"
+                                FontSize="12"
+                                Foreground="#666" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 </Window>

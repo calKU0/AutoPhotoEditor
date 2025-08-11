@@ -1,7 +1,6 @@
 ﻿using ImageMagick;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 using System.IO;
 
 namespace AutoPhotoEditor.Helpers
@@ -36,25 +35,12 @@ namespace AutoPhotoEditor.Helpers
             }
         }
 
-        public static Image<Rgba32> LoadAndResizeImage(string path)
+        public static Image<Rgba32> LoadImage(string path)
         {
             if (!File.Exists(path))
                 throw new FileNotFoundException("Image file not found.", path);
 
-            using var image = Image.Load<Rgba32>(path);
-            if (image.Width > 1920 || image.Height > 1080)
-            {
-                image.Mutate(x => x.Resize(new ResizeOptions
-                {
-                    Size = new Size(1920, 1080),
-                    Mode = ResizeMode.Max,
-                    Sampler = KnownResamplers.Lanczos3
-                }));
-            }
-
-            var result = new Image<Rgba32>(1920, 1080);
-            result.Mutate(x => x.DrawImage(image, new Point(0, 0), 1f));
-            return result;
+            return Image.Load<Rgba32>(path);
         }
 
         public static bool IsFileLocked(string filePath)

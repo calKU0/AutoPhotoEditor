@@ -1,32 +1,18 @@
-﻿using AutoPhotoEditor.Helpers;
-using AutoPhotoEditor.Interfaces;
+﻿using AutoPhotoEditor.Interfaces;
 using AutoPhotoEditor.Models;
 using AutoPhotoEditor.Services;
-using CloudinaryDotNet;
-using ImageMagick;
+using Microsoft.Win32;
 using System.Configuration;
 using System.Diagnostics;
 using System.IO;
-using System.Net;
-using System.Net.Http;
-using System.Text;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Windows.Threading;
-using Image = SixLabors.ImageSharp.Image;
-using ImageResizeMode = SixLabors.ImageSharp.Processing.ResizeMode;
-using MessageBox = ModernWpf.MessageBox;
 using Path = System.IO.Path;
 using Point = System.Windows.Point;
-using Size = SixLabors.ImageSharp.Size;
 
 namespace AutoPhotoEditor
 {
@@ -46,9 +32,10 @@ namespace AutoPhotoEditor
         public readonly string _xlPassword = ConfigurationManager.AppSettings["XLPassword"] ?? "";
 
         // Folders
-        public readonly string _archiveFolder = ConfigurationManager.AppSettings["ArchiveFolder"] ?? "";
+        public readonly string _tempFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Temp");
 
-        public readonly string _tempFolder = ConfigurationManager.AppSettings["TempFolder"] ?? "";
+        public readonly string _archiveFolder = ConfigurationManager.AppSettings["ArchiveFolder"] ?? "";
+        public readonly string _archiveCleanPngFolder = ConfigurationManager.AppSettings["ArchiveCleanPngFolder"] ?? "";
         public readonly string _inputFolder = ConfigurationManager.AppSettings["InputFolder"] ?? "";
         public readonly string _outputFolder = ConfigurationManager.AppSettings["OutputWithWatermark"] ?? "";
         public readonly string _outputFolderWithoutLogo = ConfigurationManager.AppSettings["OutputWithoutWatermark"] ?? "";
@@ -60,6 +47,9 @@ namespace AutoPhotoEditor
         private readonly Uri placeholder = new Uri("pack://application:,,,/AutoPhotoEditor;component/Resources/placeholder.png");
         private readonly string _pythonScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "cropper.py");
         private readonly string _pythonRemoveBgScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "bgRemover.py");
+        private readonly string _pythonCropScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "crop.py");
+        private readonly string _pythonResizeScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "resize.py");
+        private readonly string _pythonWatermarkScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "apply_watermark.py");
         private readonly string _watermarkPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "watermark.png");
 
         private IDatabaseService _databaseService;
@@ -68,8 +58,9 @@ namespace AutoPhotoEditor
         private IFolderWatcher _folderWatcher;
         private IFolderWatcher _manualEditWatcher;
 
-        private string? _lastProcessedImagePath;
         private string? _lastOriginalFilePath;
+        private string? _lastCleanPngImagePath;
+        private string? _lastProcessedImagePath;
         private string? _lastCroppedOnlyPath;
 
         private CancellationTokenSource? _cts;
@@ -80,12 +71,12 @@ namespace AutoPhotoEditor
 
         private bool _isFading = false;
         private string _lastMessage = "";
-        private Product product;
 
         public MainWindow()
         {
             InitializeComponent();
             CheckIfFoldersExists();
+            LoadFolderPaths();
 
             DownloadedImage.Source = new BitmapImage(placeholder);
 
@@ -97,22 +88,25 @@ namespace AutoPhotoEditor
                 ApiVersion = _xlApiVersion,
                 ProgramName = _xlProgramName,
                 Database = _xlDatabase,
-                Username = _xlUsername,
-                Password = _xlPassword,
                 WithoutInterface = 1
             };
 
-            _imageService = new ImageProcessingService(_inputFolder, _tempFolder, _outputFolder, _outputFolderWithoutLogo, _archiveFolder, _pythonScriptPath, _watermarkPath, _pythonRemoveBgScriptPath);
+            _imageService = new ImageProcessingService(_inputFolder, _tempFolder, _outputFolder, _outputFolderWithoutLogo, _archiveFolder, _archiveCleanPngFolder, _pythonScriptPath, _watermarkPath, _pythonRemoveBgScriptPath, _pythonCropScriptPath, _pythonResizeScriptPath, _pythonWatermarkScriptPath);
             _xlService = new XlService(xlLogin);
             _databaseService = new DatabaseService(_connectionString);
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            bool removeBg = false;
-            bool crop = false;
-            bool addWatermark = false;
-            string extension = "jpg";
+            try
+            {
+                _xlService.Login();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Nie udało się zalogować do Xl'a. {ex.Message}", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
+                Close();
+            }
 
             if (_folderWatcher != null)
             {
@@ -120,96 +114,9 @@ namespace AutoPhotoEditor
                 return;
             }
 
-            _cts = new CancellationTokenSource();
-
             _folderWatcher = new FolderWatcher(_inputFolder, async filePath =>
             {
-                try
-                {
-                    // Prompt user if previous image was not handled
-                    if (_lastProcessedImagePath != null)
-                    {
-                        MessageBoxResult? result = MessageBoxResult.None;
-
-                        Dispatcher.Invoke(() =>
-                        {
-                            result = MessageBox.Show("Czy na pewno chcesz usunąć zdjęcie?", "Potwierdź",
-                                MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-                        });
-
-                        if (result is MessageBoxResult.Yes)
-                        {
-                            if (File.Exists(_lastProcessedImagePath))
-                                File.Delete(_lastProcessedImagePath);
-                            if (_lastCroppedOnlyPath != null && File.Exists(_lastCroppedOnlyPath))
-                                File.Delete(_lastCroppedOnlyPath);
-                            if (_lastOriginalFilePath != null && File.Exists(_lastOriginalFilePath))
-                                File.Delete(_lastOriginalFilePath);
-                        }
-                        else
-                        {
-                            return;
-                        }
-
-                        _lastProcessedImagePath = null;
-                        _lastOriginalFilePath = null;
-                        _lastCroppedOnlyPath = null;
-                    }
-
-                    Dispatcher.Invoke(() =>
-                    {
-                        ShowLoading(true);
-                        ChangeButtonsActive(false);
-
-                        removeBg = RemoveBackgroundCheckbox.IsChecked ?? false;
-                        crop = CropCheckbox.IsChecked ?? false;
-                        addWatermark = WatermarkCheckbox.IsChecked ?? false;
-                        var selectedItem = FileExtensionCombobox.SelectedItem as ComboBoxItem;
-
-                        extension = (selectedItem?.Content?.ToString() ?? "jpg").ToLowerInvariant();
-                    });
-
-                    (string? watermarkedPath, string nonWatermarkedPath) = await _imageService.ProcessImageAsync(
-                        filePath,
-                        UpdateLoadingStatus,
-                        _cts.Token,
-                        removeBg,
-                        crop,
-                        addWatermark,
-                        extension
-                    );
-
-                    // Save both paths so we can clean up either
-                    _lastProcessedImagePath = watermarkedPath ?? nonWatermarkedPath;
-                    _lastOriginalFilePath = Path.Combine(_archiveFolder, Path.GetFileName(filePath));
-                    _lastCroppedOnlyPath = nonWatermarkedPath;
-
-                    byte[] imageBytes = await File.ReadAllBytesAsync(_lastProcessedImagePath);
-
-                    Dispatcher.Invoke(() =>
-                    {
-                        DisplayImage(imageBytes);
-                        ChangeButtonsActive(true);
-                    });
-                }
-                catch (OperationCanceledException)
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        MessageBox.Show("Zatrzymano.", "Informacja", MessageBoxButton.OK, MessageBoxImage.Information);
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        MessageBox.Show($"Błąd przy przetwarzaniu pliku. {ex}", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
-                    });
-                }
-                finally
-                {
-                    Dispatcher.Invoke(() => ShowLoading(false));
-                }
+                await ProcessImage(filePath);
             });
 
             _manualEditWatcher = new FolderWatcher(_manualEditsFolder, async manualFilePath =>
@@ -231,10 +138,12 @@ namespace AutoPhotoEditor
                         {
                             if (File.Exists(_lastProcessedImagePath))
                                 File.Delete(_lastProcessedImagePath);
-                            if (_lastCroppedOnlyPath != null && File.Exists(_lastCroppedOnlyPath))
+
+                            if (File.Exists(_lastCleanPngImagePath))
+                                File.Delete(_lastCleanPngImagePath);
+
+                            if (File.Exists(_lastCroppedOnlyPath))
                                 File.Delete(_lastCroppedOnlyPath);
-                            if (_lastOriginalFilePath != null && File.Exists(_lastOriginalFilePath))
-                                File.Delete(_lastOriginalFilePath);
                         }
                         else
                         {
@@ -242,8 +151,8 @@ namespace AutoPhotoEditor
                         }
 
                         _lastProcessedImagePath = null;
-                        _lastOriginalFilePath = null;
                         _lastCroppedOnlyPath = null;
+                        _lastCleanPngImagePath = null;
                     }
 
                     byte[] imageBytes = await File.ReadAllBytesAsync(manualFilePath);
@@ -345,12 +254,22 @@ namespace AutoPhotoEditor
 
                 if (product.Id != 0 && File.Exists(_lastProcessedImagePath))
                 {
+                    List<(byte[] ImageData, bool Watermarked)> imagesToAdd = new();
                     string extension = Path.GetExtension(_lastProcessedImagePath);
                     byte[] imageBytes = File.ReadAllBytes(_lastProcessedImagePath);
+                    string opeIdent = _xlService.OpeIdent;
 
-                    int? imageId = await _databaseService.AttachImageToProductAsync(product.Id, extension, imageBytes);
+                    imagesToAdd.Add((imageBytes, true));
 
-                    if (imageId is null || imageId <= 0)
+                    if (File.Exists(_lastCroppedOnlyPath))
+                    {
+                        byte[] imageWithoutWatermarkBytes = File.ReadAllBytes(_lastCroppedOnlyPath);
+                        imagesToAdd.Add((imageWithoutWatermarkBytes, false));
+                    }
+
+                    List<int?> imageIds = await _databaseService.AttachImagesToProductAsync(product.Id, extension, imagesToAdd, opeIdent);
+
+                    if (imageIds is null)
                     {
                         MessageBox.Show("Nie udało się podpiąć zdjęcia do karty towarowej.", "Niepowodzenie", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
@@ -364,18 +283,16 @@ namespace AutoPhotoEditor
                     bool? resultAdd = resultDialog.ShowDialog();
                     if (resultAdd == false)
                     {
-                        if (imageId is int id)
+                        bool success = await _databaseService.DetachImagesFromProductAsync(imageIds);
+                        if (success)
                         {
-                            bool success = await _databaseService.DetachImageFromProductAsync(id);
-                            if (success)
-                            {
-                                MessageBox.Show("Odpięto zdjecie od karty towarowej.", "Niepowodzenie", MessageBoxButton.OK, MessageBoxImage.Information);
-                            }
-                            else
-                            {
-                                MessageBox.Show("Nie udało się odpiąć zdjęcia od karty towarowej. Spróbuj zrobić to ręcznie", "Niepowodzenie", MessageBoxButton.OK, MessageBoxImage.Warning);
-                            }
+                            MessageBox.Show("Odpięto zdjecie od karty towarowej.", "Niepowodzenie", MessageBoxButton.OK, MessageBoxImage.Information);
                         }
+                        else
+                        {
+                            MessageBox.Show("Nie udało się odpiąć zdjęcia od karty towarowej. Spróbuj zrobić to ręcznie", "Niepowodzenie", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
+
                         return;
                     }
                 }
@@ -385,7 +302,7 @@ namespace AutoPhotoEditor
                 ChangeButtonsActive(false);
                 _lastProcessedImagePath = null;
                 _lastCroppedOnlyPath = null;
-                _lastOriginalFilePath = null;
+                _lastCleanPngImagePath = null;
 
                 ResetImageScaleAndScroll();
             }
@@ -412,7 +329,7 @@ namespace AutoPhotoEditor
                 ChangeButtonsActive(false);
                 _lastProcessedImagePath = null;
                 _lastCroppedOnlyPath = null;
-                _lastOriginalFilePath = null;
+                _lastCleanPngImagePath = null;
 
                 ResetImageScaleAndScroll();
             }
@@ -432,16 +349,19 @@ namespace AutoPhotoEditor
                 if (!string.IsNullOrWhiteSpace(_lastCroppedOnlyPath) && File.Exists(_lastCroppedOnlyPath))
                     File.Delete(_lastCroppedOnlyPath);
 
+                if (!string.IsNullOrWhiteSpace(_lastCleanPngImagePath) && File.Exists(_lastCleanPngImagePath))
+                    File.Delete(_lastCleanPngImagePath);
+
                 if (!string.IsNullOrWhiteSpace(_lastOriginalFilePath) && File.Exists(_lastOriginalFilePath))
                     File.Delete(_lastOriginalFilePath);
 
-                MessageBox.Show("Usunięto zdjęcie.", "Informacja");
+                MessageBox.Show("Usunięto zdjęcie.", "Informacja", MessageBoxButton.OK, MessageBoxImage.Information);
 
                 ChangeButtonsActive(false);
 
                 _lastProcessedImagePath = null;
                 _lastCroppedOnlyPath = null;
-                _lastOriginalFilePath = null;
+                _lastCleanPngImagePath = null;
 
                 DownloadedImage.Source = new BitmapImage(placeholder);
 
@@ -461,7 +381,7 @@ namespace AutoPhotoEditor
                 return;
             }
 
-            if (!File.Exists(_lastOriginalFilePath))
+            if (!File.Exists(_lastCleanPngImagePath))
             {
                 MessageBox.Show("Nie znaleziono zdjęcia do otwarcia.", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
@@ -469,7 +389,7 @@ namespace AutoPhotoEditor
 
             try
             {
-                Process.Start(_pathToPhotoshop, $"\"{_lastOriginalFilePath}\"");
+                Process.Start(_pathToPhotoshop, $"\"{_lastCleanPngImagePath}\"");
             }
             catch (Exception ex)
             {
@@ -604,6 +524,21 @@ namespace AutoPhotoEditor
             {
                 Directory.CreateDirectory(_manualEditsFolder);
             }
+
+            if (!Path.Exists(_archiveCleanPngFolder))
+            {
+                Directory.CreateDirectory(_archiveCleanPngFolder);
+            }
+        }
+
+        private void LoadFolderPaths()
+        {
+            InputFolderText.Text = ConfigurationManager.AppSettings["InputFolder"];
+            ArchiveFolderText.Text = ConfigurationManager.AppSettings["ArchiveFolder"];
+            ArchiveCleanPngFolderText.Text = ConfigurationManager.AppSettings["ArchiveCleanPngFolder"];
+            OutputWithWatermarkText.Text = ConfigurationManager.AppSettings["OutputWithWatermark"];
+            OutputWithoutWatermarkText.Text = ConfigurationManager.AppSettings["OutputWithoutWatermark"];
+            ManualEditsFolderText.Text = ConfigurationManager.AppSettings["ManualEditsFolder"];
         }
 
         private void DownloadedImage_Loaded(object sender, RoutedEventArgs e)
@@ -699,6 +634,36 @@ namespace AutoPhotoEditor
 
             _manualEditWatcher?.Dispose();
             _manualEditWatcher = null;
+
+            try
+            {
+                if (_xlService.IsLogged)
+                {
+                    _xlService.Logout();
+                }
+            }
+            catch (Exception logoutEx)
+            {
+                MessageBox.Show($"Nie udało się wylogować z XLa. {logoutEx.Message}", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async void RefreshButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(_lastOriginalFilePath) || !File.Exists(_lastOriginalFilePath))
+                {
+                    MessageBox.Show("Brak zdjęcia do ponownego przeprocesowania lub plik został usunięty.", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+                string destinationPath = Path.Combine(_inputFolder, Path.GetFileName(_lastOriginalFilePath));
+                File.Move(_lastOriginalFilePath, destinationPath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Błąd podczas ponownego przeprocesowania obrazu: {ex.Message}", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void ChangeButtonsActive(bool enable)
@@ -707,6 +672,189 @@ namespace AutoPhotoEditor
             SaveToXlButton.IsEnabled = enable;
             DeleteButton.IsEnabled = enable;
             OpenWithPsButton.IsEnabled = enable;
+            RefreshButton.IsEnabled = enable;
+        }
+
+        private async Task ProcessImage(string filePath, bool isNew = true)
+        {
+            _cts = new CancellationTokenSource();
+            bool removeBg = false;
+            bool crop = false;
+            bool addWatermark = false;
+            bool scale = false;
+            string extension = "jpg";
+            string model = "u2net";
+
+            try
+            {
+                // Prompt user if previous image was not handled
+                if (_lastProcessedImagePath != null)
+                {
+                    MessageBoxResult? result = MessageBoxResult.None;
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        result = MessageBox.Show("Czy na pewno chcesz usunąć zdjęcie?", "Potwierdź",
+                            MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                    });
+
+                    if (result is MessageBoxResult.Yes)
+                    {
+                        if (File.Exists(_lastProcessedImagePath))
+                            File.Delete(_lastProcessedImagePath);
+
+                        if (File.Exists(_lastCleanPngImagePath))
+                            File.Delete(_lastCleanPngImagePath);
+
+                        if (File.Exists(_lastCroppedOnlyPath))
+                            File.Delete(_lastCroppedOnlyPath);
+                    }
+                    else
+                    {
+                        return;
+                    }
+
+                    _lastProcessedImagePath = null;
+                    _lastCroppedOnlyPath = null;
+                    _lastCleanPngImagePath = null;
+                }
+
+                Dispatcher.Invoke(() =>
+                {
+                    ShowLoading(true);
+                    ChangeButtonsActive(false);
+
+                    removeBg = RemoveBackgroundCheckbox.IsChecked ?? false;
+                    crop = CropCheckbox.IsChecked ?? false;
+                    scale = ScaleCheckBox.IsChecked ?? false;
+                    addWatermark = WatermarkCheckbox.IsChecked ?? false;
+                    var selectedExtension = FileExtensionCombobox.SelectedItem as ComboBoxItem;
+                    extension = (selectedExtension?.Content?.ToString() ?? "jpg").ToLowerInvariant();
+                    var selectedModel = AiModelCombobox.SelectedItem as ComboBoxItem;
+                    model = (selectedModel?.Tag?.ToString() ?? "jpg").ToLowerInvariant();
+                });
+
+                (string? watermarkedPath, string nonWatermarkedPath, string cleanPngImagePath) = await _imageService.ProcessImageAsync(
+                    filePath,
+                    UpdateLoadingStatus,
+                    _cts.Token,
+                    removeBg,
+                    crop,
+                    scale,
+                    addWatermark,
+                    extension,
+                    model
+                );
+
+                // Save both paths so we can clean up either
+                _lastProcessedImagePath = watermarkedPath ?? nonWatermarkedPath;
+                if (isNew)
+                    _lastOriginalFilePath = Path.Combine(_archiveFolder, Path.GetFileName(filePath));
+                else
+                    _lastOriginalFilePath = filePath;
+
+                _lastCroppedOnlyPath = nonWatermarkedPath;
+                _lastCleanPngImagePath = cleanPngImagePath;
+
+                byte[] imageBytes = await File.ReadAllBytesAsync(_lastProcessedImagePath);
+
+                Dispatcher.Invoke(() =>
+                {
+                    DisplayImage(imageBytes);
+                    ChangeButtonsActive(true);
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    MessageBox.Show("Zatrzymano.", "Informacja", MessageBoxButton.OK, MessageBoxImage.Information);
+                });
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    MessageBox.Show($"Błąd przy przetwarzaniu pliku. {ex}", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
+                });
+            }
+            finally
+            {
+                Dispatcher.Invoke(() => ShowLoading(false));
+            }
+        }
+
+        private void SelectFolder_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string key)
+            {
+                var dialog = new OpenFolderDialog
+                {
+                    InitialDirectory = ConfigurationManager.AppSettings[key] ?? "",
+                    Title = $"Wybierz folder dla: {key}"
+                };
+
+                if (dialog.ShowDialog() == true)
+                {
+                    UpdateAppConfig(key, dialog.FolderName);
+                    LoadFolderPaths();
+                }
+            }
+        }
+
+        private void UpdateAppConfig(string key, string value)
+        {
+            var config = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+            if (config.AppSettings.Settings[key] != null)
+                config.AppSettings.Settings[key].Value = value;
+            else
+                config.AppSettings.Settings.Add(key, value);
+
+            config.Save(ConfigurationSaveMode.Modified);
+            ConfigurationManager.RefreshSection("appSettings");
+        }
+
+        private void ImageContainerGrid_DragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                e.Effects = DragDropEffects.Copy;
+                DragDropOverlay.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                e.Effects = DragDropEffects.None;
+            }
+            e.Handled = true;
+        }
+
+        private void ImageContainerGrid_DragLeave(object sender, DragEventArgs e)
+        {
+            DragDropOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private void ImageContainerGrid_Drop(object sender, DragEventArgs e)
+        {
+            DragDropOverlay.Visibility = Visibility.Collapsed;
+
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+                foreach (var filePath in files)
+                {
+                    try
+                    {
+                        string fileName = Path.GetFileName(filePath);
+                        string destPath = Path.Combine(_inputFolder, fileName);
+
+                        File.Move(filePath, destPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Błąd podczas przenoszenia pliku: {ex.Message}");
+                    }
+                }
+            }
         }
     }
 }

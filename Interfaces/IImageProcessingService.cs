@@ -13,12 +13,14 @@
         /// <param name="removeBg">Should image remove bg</param>
         /// <param name="crop">Should image be cropped</param>
         /// <returns>Tuple of (withWatermarkPath, withoutWatermarkPath)</returns>
-        Task<(string? withWatermark, string withoutWatermark)> ProcessImageAsync(string filePath,
+        Task<(string? withWatermark, string withoutWatermark, string cleanPngImage)> ProcessImageAsync(string filePath,
             Action<string> statusCallback,
             CancellationToken token,
             bool removeBg,
             bool crop,
+            bool scale,
             bool addWatermark,
-            string extension);
+            string extension,
+            string model);
     }
 }

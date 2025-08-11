@@ -1,10 +1,6 @@
-﻿using AutoPhotoEditor.Helpers;
-using AutoPhotoEditor.Interfaces;
+﻿using AutoPhotoEditor.Interfaces;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 
 namespace AutoPhotoEditor.Services
@@ -19,6 +15,10 @@ namespace AutoPhotoEditor.Services
         private readonly string _pythonScriptPath;
         private readonly string _pythonRemoveBgScriptPath;
         private readonly string _watermarkPath;
+        private readonly string _archiveCleanPngFolder;
+        private readonly string _pythonCropScriptPath;
+        private readonly string _pythonResizeScriptPath;
+        private readonly string _pythonWatermarkScriptPath;
 
         public ImageProcessingService(
             string inputFolder,
@@ -26,9 +26,13 @@ namespace AutoPhotoEditor.Services
             string outputFolder,
             string outputFolderWithoutWatermark,
             string archiveFolder,
+            string archiveCleanPngFolder,
             string pythonScriptPath,
             string watermarkPath,
-            string pythonRemoveBgScriptPath)
+            string pythonRemoveBgScriptPath,
+            string pythonCropScriptPath,
+            string pythonResizeScriptPath,
+            string pythonWatermarkScriptPath)
         {
             _inputFolder = inputFolder;
             _tempFolder = tempFolder;
@@ -38,84 +42,73 @@ namespace AutoPhotoEditor.Services
             _pythonScriptPath = pythonScriptPath;
             _watermarkPath = watermarkPath;
             _pythonRemoveBgScriptPath = pythonRemoveBgScriptPath;
+            _archiveCleanPngFolder = archiveCleanPngFolder;
+            _pythonCropScriptPath = pythonCropScriptPath;
+            _pythonResizeScriptPath = pythonResizeScriptPath;
+            _pythonWatermarkScriptPath = pythonWatermarkScriptPath;
         }
 
-        public async Task<(string? withWatermark, string withoutWatermark)> ProcessImageAsync(
+        public async Task<(string? withWatermark, string withoutWatermark, string cleanPngImage)> ProcessImageAsync(
             string filePath,
             Action<string> statusCallback,
             CancellationToken token,
             bool removeBg,
             bool crop,
+            bool scale,
             bool addWatermark,
-            string ext)
+            string ext,
+            string model)
         {
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("File not found.", filePath);
 
             string fileBase = Path.GetFileNameWithoutExtension(filePath);
             string extension = Path.GetExtension(filePath).ToLowerInvariant();
-
-            statusCallback("Przygotowanie obrazu...");
-
-            using var image = await Task.Run(() =>
-            {
-                return extension switch
-                {
-                    ".cr3" => ImageUtils.ConvertCr3ToImage(filePath),
-                    ".jpg" or ".jpeg" or ".png" => ImageUtils.LoadAndResizeImage(filePath),
-                    _ => throw new NotSupportedException($"Unsupported file type: {extension}")
-                };
-            }, token);
-
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            await Task.Delay(100);
-
             string currentImagePath = filePath;
-            string? bgRemovedPath = null;
-            string? withoutWatermarkPath = null;
-            string? withWatermarkPath = null;
-            string? cloudinaryPublicId = null;
+
+            statusCallback("Ładuje zdjęcie...");
 
             if (removeBg)
             {
                 statusCallback("Usuwam tło...");
-                bgRemovedPath = Path.Combine(_tempFolder, fileBase + "_bg_removed.png");
-                RunPythonRemoveBg(filePath, bgRemovedPath);
+                string bgRemovedPath = Path.Combine(_tempFolder, fileBase + "_bg_removed.png");
+                RunPythonRemoveBg(filePath, bgRemovedPath, model);
                 currentImagePath = bgRemovedPath;
             }
 
-            // Define output paths
-            withoutWatermarkPath = Path.Combine(_outputFolderWithoutWatermark, fileBase + $"_processed.{ext}");
-            withWatermarkPath = Path.Combine(_outputFolder, fileBase + $"_watermarked.{ext}");
+            // temp working file
+            string workingPath = Path.Combine(_tempFolder, fileBase + "_working.png");
+            File.Copy(currentImagePath, workingPath, true);
 
-            statusCallback("Kadrowanie...");
+            string cleanPng = string.Empty;
 
-            if (crop || addWatermark)
+            if (crop)
             {
-                // If cropping or watermarking needed, run python crop (with crop flag!)
-                RunPythonCrop(currentImagePath, withoutWatermarkPath, null, 0.3f, crop);
-
-                if (addWatermark)
-                {
-                    RunPythonCrop(currentImagePath, withWatermarkPath, _watermarkPath, 0.5f, crop);
-                }
+                statusCallback("Kadruje...");
+                string croppedPath = Path.Combine(_tempFolder, fileBase + "_cropped.png");
+                RunPython(_pythonCropScriptPath, workingPath, croppedPath);
+                workingPath = croppedPath;
+                cleanPng = Path.Combine(_archiveCleanPngFolder, Path.GetFileName(workingPath));
+                File.Copy(workingPath, cleanPng, true);
             }
-            else
+
+            if (scale)
             {
-                // No cropping, no watermarking — just copy original or resized
-                if (removeBg)
-                {
-                    // Flatten transparency to white before saving to JPG
-                    using var imgWithAlpha = Image.Load<Rgba32>(currentImagePath);
-                    var flattened = imgWithAlpha.Clone(ctx => ctx.BackgroundColor(Color.White));
-                    await flattened.SaveAsJpegAsync(withoutWatermarkPath);
-                }
-                else
-                {
-                    using var originalImage = ImageUtils.LoadAndResizeImage(currentImagePath);
-                    await originalImage.SaveAsJpegAsync(withoutWatermarkPath);
-                }
+                statusCallback("Skaluje...");
+                string resizedPath = Path.Combine(_tempFolder, fileBase + "_resized.png");
+                RunPython(_pythonResizeScriptPath, workingPath, resizedPath, "900");
+                workingPath = resizedPath;
+            }
+
+            string withoutWatermarkPath = Path.Combine(_outputFolderWithoutWatermark, fileBase + "_processed." + ext);
+            File.Copy(workingPath, withoutWatermarkPath, true);
+
+            string? withWatermarkPath = null;
+            if (addWatermark)
+            {
+                statusCallback("Nakładam znak wodny...");
+                withWatermarkPath = Path.Combine(_outputFolder, fileBase + "_watermarked." + ext);
+                RunPython(_pythonWatermarkScriptPath, workingPath, withWatermarkPath, _watermarkPath, "0.5");
             }
 
             // Archive original
@@ -123,12 +116,11 @@ namespace AutoPhotoEditor.Services
             if (File.Exists(archivedPath)) File.Delete(archivedPath);
             File.Move(filePath, archivedPath);
 
-            statusCallback("Zakończono.");
-
-            return (addWatermark ? withWatermarkPath : null, withoutWatermarkPath);
+            statusCallback("Done.");
+            return (withWatermarkPath, withoutWatermarkPath, cleanPng);
         }
 
-        private void RunPythonCrop(string input, string output, string? watermark = null, float opacity = 0.3f, bool doCrop = true)
+        private void RunPython(string scriptPath, params string[] args)
         {
             var psi = new ProcessStartInfo
             {
@@ -140,17 +132,7 @@ namespace AutoPhotoEditor.Services
             };
 
             string Quote(string s) => $"\"{s}\"";
-            var args = new List<string>
-            {
-                Quote(_pythonScriptPath),
-                Quote(input),
-                Quote(output),
-                Quote(watermark ?? "NONE"),
-                doCrop ? "1" : "0",
-                opacity.ToString(CultureInfo.InvariantCulture)
-            };
-
-            psi.Arguments = string.Join(" ", args);
+            psi.Arguments = string.Join(" ", new[] { Quote(scriptPath) }.Concat(args.Select(Quote)));
 
             using var process = Process.Start(psi);
             string error = process.StandardError.ReadToEnd();
@@ -165,12 +147,13 @@ namespace AutoPhotoEditor.Services
             }
         }
 
-        private void RunPythonRemoveBg(string inputPath, string outputPath)
+        private void RunPythonRemoveBg(string inputPath, string outputPath, string model)
         {
+            var arguments = $"i -a -m \"{model}\" \"{inputPath}\" \"{outputPath}\"";
             var psi = new ProcessStartInfo
             {
                 FileName = "rembg",
-                Arguments = $"i -m u2net -a \"{inputPath}\" \"{outputPath}\"",
+                Arguments = arguments,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,

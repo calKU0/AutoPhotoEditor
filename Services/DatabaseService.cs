@@ -14,76 +14,94 @@ namespace AutoPhotoEditor.Services
             _connectionString = connectionString;
         }
 
-        public async Task<int?> AttachImageToProductAsync(int productId, string extension, byte[] imageBytes)
+        public async Task<List<int?>> AttachImagesToProductAsync(int productId, string extension, List<(byte[] ImageData, bool Watermarked)> images, string opeIdent)
         {
-            if (productId <= 0) throw new ArgumentOutOfRangeException(nameof(productId));
-            if (string.IsNullOrWhiteSpace(extension)) throw new ArgumentException("Extension required", nameof(extension));
-            if (imageBytes is null) throw new ArgumentNullException(nameof(imageBytes));
+            if (productId <= 0)
+                throw new ArgumentOutOfRangeException(nameof(productId));
+            if (string.IsNullOrWhiteSpace(extension))
+                throw new ArgumentException("Extension required", nameof(extension));
+            if (images is null || images.Count == 0)
+                throw new ArgumentNullException(nameof(images));
 
             const string procName = "dbo.DodajZdjecieDoTowaru";
+            var insertedIds = new List<int?>();
 
             using var connection = new SqlConnection(_connectionString);
-            using var command = connection.CreateCommand();
-            command.CommandText = procName;
-            command.CommandType = CommandType.StoredProcedure;
-
-            // Input params
-            command.Parameters.Add(new SqlParameter("@twrId", SqlDbType.Int) { Value = productId });
-            command.Parameters.Add(new SqlParameter("@zalacznikRozszerzenie", SqlDbType.VarChar, 29) { Value = extension });
-
-            var dataParam = new SqlParameter("@zalacznikDane", SqlDbType.VarBinary, -1)
-            {
-                Value = imageBytes
-            };
-            command.Parameters.Add(dataParam);
-
-            var outDabId = new SqlParameter("@DabId", SqlDbType.Int)
-            {
-                Direction = ParameterDirection.Output
-            };
-            command.Parameters.Add(outDabId);
-
-            // Return value
-            var retParam = new SqlParameter("@RETURN_VALUE", SqlDbType.Int)
-            {
-                Direction = ParameterDirection.ReturnValue
-            };
-            command.Parameters.Add(retParam);
-
             await connection.OpenAsync().ConfigureAwait(false);
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
 
-            int returnCode = retParam.Value == DBNull.Value ? -999 : (int)retParam.Value;
-            if (returnCode != 0)
+            foreach (var (imageBytes, watermarked) in images)
             {
-                return null;
+                using var command = connection.CreateCommand();
+                command.CommandText = procName;
+                command.CommandType = CommandType.StoredProcedure;
+
+                // Input params
+                command.Parameters.Add(new SqlParameter("@twrId", SqlDbType.Int) { Value = productId });
+                command.Parameters.Add(new SqlParameter("@zalacznikRozszerzenie", SqlDbType.VarChar, 29) { Value = extension });
+                command.Parameters.Add(new SqlParameter("@logo", SqlDbType.Bit) { Value = Convert.ToInt16(watermarked) });
+                command.Parameters.Add(new SqlParameter("@operator", SqlDbType.VarChar, 15) { Value = opeIdent });
+                command.Parameters.Add(new SqlParameter("@zalacznikDane", SqlDbType.VarBinary, -1) { Value = imageBytes });
+
+                // Output param
+                var outDabId = new SqlParameter("@DabId", SqlDbType.Int) { Direction = ParameterDirection.Output };
+                command.Parameters.Add(outDabId);
+
+                // Return value
+                var retParam = new SqlParameter("@RETURN_VALUE", SqlDbType.Int) { Direction = ParameterDirection.ReturnValue };
+                command.Parameters.Add(retParam);
+
+                await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+
+                int returnCode = retParam.Value == DBNull.Value ? -999 : (int)retParam.Value;
+                if (returnCode != 0)
+                {
+                    insertedIds.Add(null);
+                    continue;
+                }
+
+                insertedIds.Add(outDabId.Value == DBNull.Value ? null : (int?)outDabId.Value);
             }
 
-            if (outDabId.Value == DBNull.Value) return null;
-            return (int?)outDabId.Value;
+            return insertedIds;
         }
 
-        public async Task<bool> DetachImageFromProductAsync(int dabId)
+        public async Task<bool> DetachImagesFromProductAsync(List<int?> dabIds)
         {
-            if (dabId <= 0) throw new ArgumentOutOfRangeException(nameof(dabId));
+            if (dabIds is null || dabIds.Count == 0)
+                throw new ArgumentNullException(nameof(dabIds));
 
             const string procName = "dbo.UsunZdjecieTowaru";
 
             using var connection = new SqlConnection(_connectionString);
-            using var command = connection.CreateCommand();
-            command.CommandText = procName;
-            command.CommandType = CommandType.StoredProcedure;
-
-            command.Parameters.Add(new SqlParameter("@DabId", SqlDbType.Int) { Value = dabId });
-
-            var retParam = new SqlParameter("@RETURN_VALUE", SqlDbType.Int) { Direction = ParameterDirection.ReturnValue };
-            command.Parameters.Add(retParam);
-
             await connection.OpenAsync().ConfigureAwait(false);
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
 
-            int returnCode = retParam.Value == DBNull.Value ? -999 : (int)retParam.Value;
-            return returnCode == 0;
+            foreach (var dabId in dabIds)
+            {
+                if (dabId <= 0)
+                    throw new ArgumentOutOfRangeException(nameof(dabIds), "DabId must be positive");
+
+                using var command = connection.CreateCommand();
+                command.CommandText = procName;
+                command.CommandType = CommandType.StoredProcedure;
+
+                command.Parameters.Add(new SqlParameter("@DabId", SqlDbType.Int) { Value = dabId });
+
+                var retParam = new SqlParameter("@RETURN_VALUE", SqlDbType.Int)
+                {
+                    Direction = ParameterDirection.ReturnValue
+                };
+                command.Parameters.Add(retParam);
+
+                await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+
+                int returnCode = retParam.Value == DBNull.Value ? -999 : (int)retParam.Value;
+                if (returnCode != 0)
+                {
+                    return false; // If any delete fails, stop and return false
+                }
+            }
+
+            return true;
         }
 
         public async Task<Product?> FindProductByEANOrCodeAsync(string code)

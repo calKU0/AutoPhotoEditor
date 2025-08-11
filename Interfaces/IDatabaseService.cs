@@ -4,9 +4,9 @@ namespace AutoPhotoEditor.Interfaces
 {
     public interface IDatabaseService
     {
-        public Task<int?> AttachImageToProductAsync(int productId, string extension, byte[] imageBytes);
+        public Task<List<int?>> AttachImagesToProductAsync(int productId, string extension, List<(byte[] ImageData, bool Watermarked)> imageBytes, string opeIdent);
 
-        public Task<bool> DetachImageFromProductAsync(int imageId);
+        public Task<bool> DetachImagesFromProductAsync(List<int?> imageId);
 
         public Task<Product?> FindProductByEANOrCodeAsync(string code);
 

@@ -11,25 +11,28 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <None Remove="Resources\delete-icon.png" />
 	  <None Remove="Resources\loading-spinner.gif" />
 	  <None Remove="Resources\photoshop-icon.png" />
 	  <None Remove="Resources\placeholder.png" />
+	  <None Remove="Resources\refresh-icon.png" />
+	  <None Remove="Resources\save-icon.png" />
 	  <None Remove="Resources\watermark.png" />
 	  <None Remove="Resources\xl-icon.png" />
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="CloudinaryDotNet" Version="1.27.5" />
-		<PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.6.0" />
+		<PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.7.0" />
 		<PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
-		<PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
-		<PackageReference Include="ModernWpf.MessageBox" Version="0.5.2" />
-		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.8" />
-		<PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.5" />
+		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
+		<PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.8">
+		  <TreatAsUsed>true</TreatAsUsed>
+		</PackageReference>
 		<PackageReference Include="WpfAnimatedGif" Version="2.0.2" />
 	</ItemGroup>
 
 	<ItemGroup>
+	  <Resource Include="Resources\delete-icon.png" />
 	  <Resource Include="Resources\loading-spinner.gif">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Resource>
@@ -37,6 +40,8 @@
 	  <Resource Include="Resources\placeholder.png">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Resource>
+	  <Resource Include="Resources\refresh-icon.png" />
+	  <Resource Include="Resources\save-icon.png" />
 	  <Resource Include="Resources\xl-icon.png" />
 	  <Content Include="icon.ico" />
 	  <Content Include="Resources\watermark.png">
@@ -52,10 +57,13 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <None Update="Scripts\bgRemover.py">
+	  <None Update="Scripts\apply_watermark.py">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
-	  <None Update="Scripts\cropper.py">
+	  <None Update="Scripts\crop.py">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Scripts\resize.py">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
 	  <None Update="Tools\cdn_api20241.net.dll">

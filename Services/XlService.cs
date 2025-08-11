@@ -15,6 +15,7 @@ namespace AutoPhotoEditor.Services
         }
 
         public bool IsLogged => _sessionId > 0;
+        public string OpeIdent => _sessionId > 0 ? _xlLogin.OpeIdent : "";
 
         public bool Login()
         {
@@ -23,8 +24,6 @@ namespace AutoPhotoEditor.Services
                 Wersja = _xlLogin.ApiVersion,
                 ProgramID = _xlLogin.ProgramName,
                 Baza = _xlLogin.Database,
-                OpeIdent = _xlLogin.Username,
-                OpeHaslo = _xlLogin.Password,
                 TrybWsadowy = _xlLogin.WithoutInterface
             };
 
@@ -33,6 +32,7 @@ namespace AutoPhotoEditor.Services
             {
                 throw new InvalidOperationException("XL login failed with result: " + result);
             }
+            _xlLogin.OpeIdent = xLLoginInfo.OpeIdent;
 
             return true;
         }
@@ -44,10 +44,14 @@ namespace AutoPhotoEditor.Services
                 Wersja = _xlLogin.ApiVersion,
             };
 
-            int result = cdn_api.cdn_api.XLLogout(_sessionId);
-            if (result != 0)
+            if (_sessionId <= 0)
             {
-                throw new InvalidOperationException("XL logout failed with result: " + result);
+                int result = cdn_api.cdn_api.XLLogout(_sessionId);
+                if (result != 0)
+                {
+                    throw new InvalidOperationException("XL logout failed with result: " + result);
+                }
+                _sessionId = 0;
             }
 
             return true;

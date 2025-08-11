@@ -2,7 +2,6 @@
 using AutoPhotoEditor.Models;
 using System.Windows;
 using System.Windows.Input;
-using MessageBox = ModernWpf.MessageBox;
 
 namespace AutoPhotoEditor
 {

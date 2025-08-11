@@ -3,7 +3,6 @@ using AutoPhotoEditor.Models;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using MessageBox = ModernWpf.MessageBox;
 
 namespace AutoPhotoEditor
 {
@@ -43,7 +42,11 @@ namespace AutoPhotoEditor
 
         private async void OpenList_Click(object sender, RoutedEventArgs e)
         {
-            _xlService.Login();
+            if (!_xlService.IsLogged)
+            {
+                _xlService.Login();
+            }
+
             int selectedId = _xlService.OpenProductList();
 
             if (selectedId > 0)
