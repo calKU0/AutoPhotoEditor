@@ -7,13 +7,10 @@ namespace AutoPhotoEditor.Services
 {
     public class ImageProcessingService : IImageProcessingService
     {
-        private readonly string _inputFolder;
         private readonly string _tempFolder;
         private readonly string _outputFolder;
         private readonly string _outputFolderWithoutWatermark;
         private readonly string _archiveFolder;
-        private readonly string _pythonScriptPath;
-        private readonly string _pythonRemoveBgScriptPath;
         private readonly string _watermarkPath;
         private readonly string _archiveCleanPngFolder;
         private readonly string _pythonCropScriptPath;
@@ -21,27 +18,21 @@ namespace AutoPhotoEditor.Services
         private readonly string _pythonWatermarkScriptPath;
 
         public ImageProcessingService(
-            string inputFolder,
             string tempFolder,
             string outputFolder,
             string outputFolderWithoutWatermark,
             string archiveFolder,
             string archiveCleanPngFolder,
-            string pythonScriptPath,
             string watermarkPath,
-            string pythonRemoveBgScriptPath,
             string pythonCropScriptPath,
             string pythonResizeScriptPath,
             string pythonWatermarkScriptPath)
         {
-            _inputFolder = inputFolder;
             _tempFolder = tempFolder;
             _outputFolder = outputFolder;
             _outputFolderWithoutWatermark = outputFolderWithoutWatermark;
             _archiveFolder = archiveFolder;
-            _pythonScriptPath = pythonScriptPath;
             _watermarkPath = watermarkPath;
-            _pythonRemoveBgScriptPath = pythonRemoveBgScriptPath;
             _archiveCleanPngFolder = archiveCleanPngFolder;
             _pythonCropScriptPath = pythonCropScriptPath;
             _pythonResizeScriptPath = pythonResizeScriptPath;
@@ -72,7 +63,7 @@ namespace AutoPhotoEditor.Services
             {
                 statusCallback("Usuwam tło...");
                 string bgRemovedPath = Path.Combine(_tempFolder, fileBase + "_bg_removed.png");
-                RunPythonRemoveBg(filePath, bgRemovedPath, model);
+                await RunPythonRemoveBgAsync(filePath, bgRemovedPath, model);
                 currentImagePath = bgRemovedPath;
             }
 
@@ -86,7 +77,7 @@ namespace AutoPhotoEditor.Services
             {
                 statusCallback("Kadruje...");
                 string croppedPath = Path.Combine(_tempFolder, fileBase + "_cropped.png");
-                RunPython(_pythonCropScriptPath, workingPath, croppedPath);
+                await RunPythonAsync(_pythonCropScriptPath, workingPath, croppedPath);
                 workingPath = croppedPath;
                 cleanPng = Path.Combine(_archiveCleanPngFolder, Path.GetFileName(workingPath));
                 File.Copy(workingPath, cleanPng, true);
@@ -95,8 +86,8 @@ namespace AutoPhotoEditor.Services
             if (scale)
             {
                 statusCallback("Skaluje...");
-                string resizedPath = Path.Combine(_tempFolder, fileBase + "_resized.png");
-                RunPython(_pythonResizeScriptPath, workingPath, resizedPath, "900");
+                string resizedPath = Path.Combine(_tempFolder, fileBase + "_resized." + ext);
+                await RunPythonAsync(_pythonResizeScriptPath, workingPath, resizedPath, "900");
                 workingPath = resizedPath;
             }
 
@@ -108,7 +99,7 @@ namespace AutoPhotoEditor.Services
             {
                 statusCallback("Nakładam znak wodny...");
                 withWatermarkPath = Path.Combine(_outputFolder, fileBase + "_watermarked." + ext);
-                RunPython(_pythonWatermarkScriptPath, workingPath, withWatermarkPath, _watermarkPath, "0.5");
+                await RunPythonAsync(_pythonWatermarkScriptPath, workingPath, withWatermarkPath, _watermarkPath, "0.5");
             }
 
             // Archive original
@@ -120,7 +111,7 @@ namespace AutoPhotoEditor.Services
             return (withWatermarkPath, withoutWatermarkPath, cleanPng);
         }
 
-        private void RunPython(string scriptPath, params string[] args)
+        private async Task RunPythonAsync(string scriptPath, params string[] args)
         {
             var psi = new ProcessStartInfo
             {
@@ -135,9 +126,12 @@ namespace AutoPhotoEditor.Services
             psi.Arguments = string.Join(" ", new[] { Quote(scriptPath) }.Concat(args.Select(Quote)));
 
             using var process = Process.Start(psi);
-            string error = process.StandardError.ReadToEnd();
-            string outputLog = process.StandardOutput.ReadToEnd();
-            process.WaitForExit();
+            if (process == null)
+                throw new InvalidOperationException("Failed to start process.");
+
+            string error = await process.StandardError.ReadToEndAsync();
+            string outputLog = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
 
             if (process.ExitCode != 0)
             {
@@ -147,7 +141,7 @@ namespace AutoPhotoEditor.Services
             }
         }
 
-        private void RunPythonRemoveBg(string inputPath, string outputPath, string model)
+        private async Task RunPythonRemoveBgAsync(string inputPath, string outputPath, string model)
         {
             var arguments = $"i -a -m \"{model}\" \"{inputPath}\" \"{outputPath}\"";
             var psi = new ProcessStartInfo
@@ -161,9 +155,12 @@ namespace AutoPhotoEditor.Services
             };
 
             using var process = Process.Start(psi);
-            string error = process.StandardError.ReadToEnd();
-            string outputLog = process.StandardOutput.ReadToEnd();
-            process.WaitForExit();
+            if (process == null)
+                throw new InvalidOperationException("Failed to start 'rembg' process.");
+
+            string error = await process.StandardError.ReadToEndAsync();
+            string outputLog = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
 
             if (process.ExitCode != 0)
             {

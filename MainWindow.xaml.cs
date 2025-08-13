@@ -8,6 +8,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -34,54 +35,48 @@ namespace AutoPhotoEditor
         // Folders
         public readonly string _tempFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Temp");
 
-        public readonly string _archiveFolder = ConfigurationManager.AppSettings["ArchiveFolder"] ?? "";
-        public readonly string _archiveCleanPngFolder = ConfigurationManager.AppSettings["ArchiveCleanPngFolder"] ?? "";
-        public readonly string _inputFolder = ConfigurationManager.AppSettings["InputFolder"] ?? "";
-        public readonly string _outputFolder = ConfigurationManager.AppSettings["OutputWithWatermark"] ?? "";
-        public readonly string _outputFolderWithoutLogo = ConfigurationManager.AppSettings["OutputWithoutWatermark"] ?? "";
-        public readonly string _manualEditsFolder = ConfigurationManager.AppSettings["ManualEditsFolder"] ?? "";
         public readonly string _pathToPhotoshop = ConfigurationManager.AppSettings["PathToPhotoshop"] ?? "";
 
         #endregion Secrets
 
         private readonly Uri placeholder = new Uri("pack://application:,,,/AutoPhotoEditor;component/Resources/placeholder.png");
-        private readonly string _pythonScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "cropper.py");
-        private readonly string _pythonRemoveBgScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "bgRemover.py");
         private readonly string _pythonCropScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "crop.py");
         private readonly string _pythonResizeScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "resize.py");
         private readonly string _pythonWatermarkScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "apply_watermark.py");
         private readonly string _watermarkPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "watermark.png");
+        private readonly List<string> _lastProcessedImages = new();
 
         private IDatabaseService _databaseService;
         private IXlService _xlService;
         private IImageProcessingService _imageService;
-        private IFolderWatcher _folderWatcher;
-        private IFolderWatcher _manualEditWatcher;
+        private IFolderWatcher? _folderWatcher;
 
-        private string? _lastOriginalFilePath;
-        private string? _lastCleanPngImagePath;
-        private string? _lastProcessedImagePath;
-        private string? _lastCroppedOnlyPath;
+        private string? _lastOriginalFilePath, _lastCleanPngImagePath, _lastProcessedImagePath, _lastCroppedOnlyPath, _currentImagePath;
+
+        public string _archiveFolder = string.Empty;
+        public string _archiveCleanPngFolder = string.Empty;
+        public string _inputFolder = string.Empty;
+        public string _outputFolder = string.Empty;
+        public string _outputFolderWithoutLogo = string.Empty;
 
         private CancellationTokenSource? _cts;
-        private Point _scrollMousePoint;
-        private double _hOffset, _vOffset;
-        private bool _isDragging = false;
-        private double _initialImageScale = 1.0;
-
+        private Point _scrollMousePoint, _scrollMousePointLeft, _scrollMousePointRight;
+        private double _hOffset, _vOffset, _hOffsetLeft, _vOffsetLeft, _hOffsetRight, _vOffsetRight;
+        private bool _isDragging, _isDraggingLeft, _isDraggingRight;
+        private double _initialImageScale = 1.0, _initialLeftScale = 1.0, _initialRightScale = 1.0;
         private bool _isFading = false;
         private string _lastMessage = "";
 
         public MainWindow()
         {
             InitializeComponent();
-            CheckIfFoldersExists();
             LoadFolderPaths();
-
-            DownloadedImage.Source = new BitmapImage(placeholder);
+            CheckIfFoldersExists();
 
             ImageScaleTransform.ScaleX = 1;
             ImageScaleTransform.ScaleY = 1;
+
+            DownloadedImage.Source = new BitmapImage(placeholder);
 
             var xlLogin = new XlLogin
             {
@@ -91,7 +86,7 @@ namespace AutoPhotoEditor
                 WithoutInterface = 1
             };
 
-            _imageService = new ImageProcessingService(_inputFolder, _tempFolder, _outputFolder, _outputFolderWithoutLogo, _archiveFolder, _archiveCleanPngFolder, _pythonScriptPath, _watermarkPath, _pythonRemoveBgScriptPath, _pythonCropScriptPath, _pythonResizeScriptPath, _pythonWatermarkScriptPath);
+            _imageService = new ImageProcessingService(_tempFolder, _outputFolder, _outputFolderWithoutLogo, _archiveFolder, _archiveCleanPngFolder, _watermarkPath, _pythonCropScriptPath, _pythonResizeScriptPath, _pythonWatermarkScriptPath);
             _xlService = new XlService(xlLogin);
             _databaseService = new DatabaseService(_connectionString);
         }
@@ -108,74 +103,20 @@ namespace AutoPhotoEditor
                 Close();
             }
 
-            if (_folderWatcher != null)
-            {
-                MessageBox.Show("Już nasłuchuje folder.", "Ostrzeżenie", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            _folderWatcher = new FolderWatcher(_inputFolder, async filePath =>
-            {
-                await ProcessImage(filePath);
-            });
-
-            _manualEditWatcher = new FolderWatcher(_manualEditsFolder, async manualFilePath =>
-            {
-                try
-                {
-                    // Prompt user if previous image was not handled
-                    if (_lastProcessedImagePath != null)
-                    {
-                        MessageBoxResult? result = MessageBoxResult.None;
-
-                        Dispatcher.Invoke(() =>
-                        {
-                            result = MessageBox.Show("Czy na pewno chcesz usunąć zdjęcie?", "Potwierdź",
-                                MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-                        });
-
-                        if (result is MessageBoxResult.Yes)
-                        {
-                            if (File.Exists(_lastProcessedImagePath))
-                                File.Delete(_lastProcessedImagePath);
-
-                            if (File.Exists(_lastCleanPngImagePath))
-                                File.Delete(_lastCleanPngImagePath);
-
-                            if (File.Exists(_lastCroppedOnlyPath))
-                                File.Delete(_lastCroppedOnlyPath);
-                        }
-                        else
-                        {
-                            return;
-                        }
-
-                        _lastProcessedImagePath = null;
-                        _lastCroppedOnlyPath = null;
-                        _lastCleanPngImagePath = null;
-                    }
-
-                    byte[] imageBytes = await File.ReadAllBytesAsync(manualFilePath);
-
-                    _lastProcessedImagePath = manualFilePath;
-                    Dispatcher.Invoke(() =>
-                    {
-                        DisplayImage(imageBytes);
-                        ChangeButtonsActive(true);
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        MessageBox.Show($"Błąd przy wyświetlaniu obrazu z folderu ręcznych edycji. {ex}", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
-                    });
-                }
-            });
+            StartFolderWatcher();
         }
 
         private void DisplayImage(byte[] data)
         {
+            if (_currentImagePath != null && _currentImagePath.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            {
+                ImageContainerGrid.Background = (Brush)FindResource("CheckerboardBrush");
+            }
+            else
+            {
+                ImageContainerGrid.Background = Brushes.White;
+            }
+
             var bitmap = new BitmapImage();
             using var stream = new MemoryStream(data);
             bitmap.BeginInit();
@@ -304,6 +245,9 @@ namespace AutoPhotoEditor
                 _lastCroppedOnlyPath = null;
                 _lastCleanPngImagePath = null;
 
+                ThumbnailPanel.Children.Clear();
+                _lastProcessedImages.Clear();
+
                 ResetImageScaleAndScroll();
             }
             catch (Exception ex)
@@ -331,6 +275,9 @@ namespace AutoPhotoEditor
                 _lastCroppedOnlyPath = null;
                 _lastCleanPngImagePath = null;
 
+                ThumbnailPanel.Children.Clear();
+                _lastProcessedImages.Clear();
+
                 ResetImageScaleAndScroll();
             }
             catch (Exception ex)
@@ -352,9 +299,6 @@ namespace AutoPhotoEditor
                 if (!string.IsNullOrWhiteSpace(_lastCleanPngImagePath) && File.Exists(_lastCleanPngImagePath))
                     File.Delete(_lastCleanPngImagePath);
 
-                if (!string.IsNullOrWhiteSpace(_lastOriginalFilePath) && File.Exists(_lastOriginalFilePath))
-                    File.Delete(_lastOriginalFilePath);
-
                 MessageBox.Show("Usunięto zdjęcie.", "Informacja", MessageBoxButton.OK, MessageBoxImage.Information);
 
                 ChangeButtonsActive(false);
@@ -362,6 +306,10 @@ namespace AutoPhotoEditor
                 _lastProcessedImagePath = null;
                 _lastCroppedOnlyPath = null;
                 _lastCleanPngImagePath = null;
+                _currentImagePath = null;
+
+                ThumbnailPanel.Children.Clear();
+                _lastProcessedImages.Clear();
 
                 DownloadedImage.Source = new BitmapImage(placeholder);
 
@@ -381,7 +329,7 @@ namespace AutoPhotoEditor
                 return;
             }
 
-            if (!File.Exists(_lastCleanPngImagePath))
+            if (string.IsNullOrEmpty(_currentImagePath) || !File.Exists(_currentImagePath))
             {
                 MessageBox.Show("Nie znaleziono zdjęcia do otwarcia.", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
@@ -389,7 +337,7 @@ namespace AutoPhotoEditor
 
             try
             {
-                Process.Start(_pathToPhotoshop, $"\"{_lastCleanPngImagePath}\"");
+                Process.Start(_pathToPhotoshop, $"\"{_currentImagePath}\"");
             }
             catch (Exception ex)
             {
@@ -495,50 +443,40 @@ namespace AutoPhotoEditor
 
         private void CheckIfFoldersExists()
         {
-            if (!Path.Exists(_archiveFolder))
+            try
             {
                 Directory.CreateDirectory(_archiveFolder);
-            }
-
-            if (!Path.Exists(_inputFolder))
-            {
                 Directory.CreateDirectory(_inputFolder);
-            }
-
-            if (!Path.Exists(_tempFolder))
-            {
                 Directory.CreateDirectory(_tempFolder);
-            }
-
-            if (!Path.Exists(_outputFolder))
-            {
                 Directory.CreateDirectory(_outputFolder);
-            }
-
-            if (!Path.Exists(_outputFolderWithoutLogo))
-            {
                 Directory.CreateDirectory(_outputFolderWithoutLogo);
-            }
-
-            if (!Path.Exists(_manualEditsFolder))
-            {
-                Directory.CreateDirectory(_manualEditsFolder);
-            }
-
-            if (!Path.Exists(_archiveCleanPngFolder))
-            {
                 Directory.CreateDirectory(_archiveCleanPngFolder);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Brak katalogu. {ex.Message}", "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
         private void LoadFolderPaths()
         {
-            InputFolderText.Text = ConfigurationManager.AppSettings["InputFolder"];
-            ArchiveFolderText.Text = ConfigurationManager.AppSettings["ArchiveFolder"];
-            ArchiveCleanPngFolderText.Text = ConfigurationManager.AppSettings["ArchiveCleanPngFolder"];
-            OutputWithWatermarkText.Text = ConfigurationManager.AppSettings["OutputWithWatermark"];
-            OutputWithoutWatermarkText.Text = ConfigurationManager.AppSettings["OutputWithoutWatermark"];
-            ManualEditsFolderText.Text = ConfigurationManager.AppSettings["ManualEditsFolder"];
+            try
+            {
+                InputFolderText.Text = ConfigurationManager.AppSettings["InputFolder"];
+                ArchiveFolderText.Text = ConfigurationManager.AppSettings["ArchiveFolder"];
+                ArchiveCleanPngFolderText.Text = ConfigurationManager.AppSettings["ArchiveCleanPngFolder"];
+                OutputWithWatermarkText.Text = ConfigurationManager.AppSettings["OutputWithWatermark"];
+                OutputWithoutWatermarkText.Text = ConfigurationManager.AppSettings["OutputWithoutWatermark"];
+
+                _archiveFolder = ConfigurationManager.AppSettings["ArchiveFolder"] ?? "";
+                _archiveCleanPngFolder = ConfigurationManager.AppSettings["ArchiveCleanPngFolder"] ?? "";
+                _inputFolder = ConfigurationManager.AppSettings["InputFolder"] ?? "";
+                _outputFolder = ConfigurationManager.AppSettings["OutputWithWatermark"] ?? "";
+                _outputFolderWithoutLogo = ConfigurationManager.AppSettings["OutputWithoutWatermark"] ?? "";
+            }
+            catch
+            {
+            }
         }
 
         private void DownloadedImage_Loaded(object sender, RoutedEventArgs e)
@@ -630,10 +568,6 @@ namespace AutoPhotoEditor
             _cts?.Cancel();
 
             _folderWatcher?.Dispose();
-            _folderWatcher = null;
-
-            _manualEditWatcher?.Dispose();
-            _manualEditWatcher = null;
 
             try
             {
@@ -648,7 +582,7 @@ namespace AutoPhotoEditor
             }
         }
 
-        private async void RefreshButton_Click(object sender, RoutedEventArgs e)
+        private void RefreshButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
@@ -694,7 +628,7 @@ namespace AutoPhotoEditor
 
                     Dispatcher.Invoke(() =>
                     {
-                        result = MessageBox.Show("Czy na pewno chcesz usunąć zdjęcie?", "Potwierdź",
+                        result = MessageBox.Show("Nie zapisano zdjęcia. Czy przejść do obróbki następnego bez zapisu?", "Potwierdź",
                             MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
                     });
 
@@ -717,6 +651,7 @@ namespace AutoPhotoEditor
                     _lastProcessedImagePath = null;
                     _lastCroppedOnlyPath = null;
                     _lastCleanPngImagePath = null;
+                    _currentImagePath = null;
                 }
 
                 Dispatcher.Invoke(() =>
@@ -755,13 +690,51 @@ namespace AutoPhotoEditor
 
                 _lastCroppedOnlyPath = nonWatermarkedPath;
                 _lastCleanPngImagePath = cleanPngImagePath;
+                _currentImagePath = _lastProcessedImagePath;
 
                 byte[] imageBytes = await File.ReadAllBytesAsync(_lastProcessedImagePath);
 
                 Dispatcher.Invoke(() =>
                 {
+                    ThumbnailPanel.Children.Clear();
+                    _lastProcessedImages.Clear();
+
                     DisplayImage(imageBytes);
                     ChangeButtonsActive(true);
+
+                    if (!string.IsNullOrEmpty(_lastProcessedImagePath) && File.Exists(_lastProcessedImagePath))
+                    {
+                        var pathsWithLabels = new (string Path, string Label)[]
+                        {
+                            (_lastOriginalFilePath, "Oryginał"),
+                            (_lastCleanPngImagePath, "Czysty png"),
+                            (_lastCroppedOnlyPath, "Obrobione bez loga"),
+                            (_lastProcessedImagePath, "Obrobione z logo")
+                        };
+
+                        Border? lastBorder = null;
+                        foreach (var (path, label) in pathsWithLabels)
+                        {
+                            if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                            {
+                                _lastProcessedImages.Add(path);
+                                var border = AddThumbnail(path, label);
+                                lastBorder = border;
+                            }
+                        }
+
+                        // Add comparison thumbnail if original and clean PNG exist
+                        if (!string.IsNullOrEmpty(_lastOriginalFilePath) && File.Exists(_lastOriginalFilePath) &&
+                            !string.IsNullOrEmpty(_lastCleanPngImagePath) && File.Exists(_lastCleanPngImagePath))
+                        {
+                            var comparisonBorder = AddThumbnail(_lastOriginalFilePath, "Porównanie");
+                            comparisonBorder.Tag = "Comparison";
+                        }
+
+                        // Highlight the last one (processed image)
+                        if (lastBorder != null)
+                            HighlightThumbnail(lastBorder);
+                    }
                 });
             }
             catch (OperationCanceledException)
@@ -784,6 +757,210 @@ namespace AutoPhotoEditor
             }
         }
 
+        private Border AddThumbnail(string imagePath, string text)
+        {
+            var thumbImage = new Image
+            {
+                Source = LoadImage(imagePath, 150, 150), // small decode for performance
+                MaxWidth = 100,
+                Stretch = Stretch.Uniform,
+                Cursor = Cursors.Hand,
+                Tag = imagePath
+            };
+
+            thumbImage.MouseLeftButtonUp += Thumbnail_Click;
+
+            var textBlock = new TextBlock
+            {
+                Text = text,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Width = 80,
+                Margin = new Thickness(0, 0, 0, 5)
+            };
+
+            var stackPanel = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            stackPanel.Children.Add(textBlock);
+            stackPanel.Children.Add(thumbImage);
+
+            var border = new Border
+            {
+                Child = stackPanel,
+                BorderThickness = new Thickness(2),
+                BorderBrush = Brushes.Transparent,
+                Margin = new Thickness(5),
+                CornerRadius = new CornerRadius(4)
+            };
+
+            ThumbnailPanel.Children.Add(border);
+            return border;
+        }
+
+        private void HighlightThumbnail(Border selectedBorder)
+        {
+            foreach (var child in ThumbnailPanel.Children)
+            {
+                if (child is Border border)
+                    border.BorderBrush = Brushes.Transparent;
+            }
+
+            selectedBorder.BorderBrush = Brushes.DeepSkyBlue;
+        }
+
+        private void Thumbnail_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Image img)
+            {
+                var border = FindAncestor<Border>(img);
+
+                // Special comparison case
+                if (border?.Tag?.ToString() == "Comparison" || img.Tag?.ToString() == "Comparison")
+                {
+                    ShowComparisonView();
+                    if (border != null)
+                        HighlightThumbnail(border);
+                    return;
+                }
+
+                // Normal image case
+                if (img.Tag is string path && File.Exists(path))
+                {
+                    if (ComparisonGrid.Visibility == Visibility.Visible)
+                    {
+                        ComparisonGrid.Visibility = Visibility.Collapsed;
+                        ImageScrollViewer.Visibility = Visibility.Visible;
+                    }
+
+                    _currentImagePath = path;
+                    byte[] imageBytes = File.ReadAllBytes(path);
+                    DisplayImage(imageBytes);
+                    ResetImageScaleAndScroll();
+
+                    if (border != null)
+                        HighlightThumbnail(border);
+                }
+            }
+        }
+
+        private void ShowComparisonView()
+        {
+            ImageScrollViewer.Visibility = Visibility.Collapsed;
+            ComparisonGrid.Visibility = Visibility.Visible;
+
+            // Use large decode size to preserve quality, actual fit will be done later
+            double decodeMax = 2400; // or whatever is reasonable for memory
+
+            LeftImage.Source = LoadImage(_lastOriginalFilePath, decodeMax, decodeMax);
+            RightImage.Source = LoadImage(_lastCleanPngImagePath, decodeMax, decodeMax);
+
+            // Wait for layout to measure before fitting
+            Dispatcher.InvokeAsync(() =>
+            {
+                ResizeComparisonImageToFit(LeftImage, LeftImageScaleTransform, LeftImageScroll, out _initialLeftScale);
+                ResizeComparisonImageToFit(RightImage, RightImageScaleTransform, RightImageScroll, out _initialRightScale);
+            }, DispatcherPriority.Loaded);
+        }
+
+        private void ResizeComparisonImageToFit(Image image, ScaleTransform scaleTransform, ScrollViewer scrollViewer, out double initialScale)
+        {
+            initialScale = 1.0;
+
+            if (image.Source is not BitmapSource bitmap)
+                return;
+
+            double imageWidth = bitmap.PixelWidth / (bitmap.DpiX / 96.0);
+            double imageHeight = bitmap.PixelHeight / (bitmap.DpiY / 96.0);
+
+            double containerWidth = scrollViewer.ViewportWidth;
+            double containerHeight = scrollViewer.ViewportHeight;
+
+            if (containerWidth <= 0 || containerHeight <= 0)
+            {
+                containerWidth = scrollViewer.ActualWidth;
+                containerHeight = scrollViewer.ActualHeight;
+            }
+
+            if (containerWidth <= 0 || containerHeight <= 0)
+                return;
+
+            double scaleX = containerWidth / imageWidth;
+            double scaleY = containerHeight / imageHeight;
+            double scale = Math.Min(scaleX, scaleY);
+
+            if (scale < 1.0)
+            {
+                scaleTransform.ScaleX = scale;
+                scaleTransform.ScaleY = scale;
+                initialScale = scale;
+            }
+            else
+            {
+                scaleTransform.ScaleX = 1.0;
+                scaleTransform.ScaleY = 1.0;
+                initialScale = 1.0;
+            }
+
+            // Reset scroll offsets
+            scrollViewer.ScrollToHorizontalOffset(0);
+            scrollViewer.ScrollToVerticalOffset(0);
+        }
+
+        private T? FindAncestor<T>(DependencyObject current) where T : DependencyObject
+        {
+            while (current != null)
+            {
+                if (current is T t)
+                    return t;
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return null;
+        }
+
+        private BitmapImage LoadImage(string path, double maxWidth, double maxHeight)
+        {
+            // Load image metadata first without decoding full bitmap
+            var info = new BitmapImage();
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                info.BeginInit();
+                info.CacheOption = BitmapCacheOption.OnLoad;
+                info.StreamSource = stream;
+                info.EndInit();
+            }
+
+            double originalWidth = info.PixelWidth;
+            double originalHeight = info.PixelHeight;
+
+            // Compute scale factor to fit max dimensions
+            double scaleX = maxWidth / originalWidth;
+            double scaleY = maxHeight / originalHeight;
+            double scale = Math.Min(scaleX, scaleY);
+
+            // Compute decode pixels while preserving aspect ratio
+            int decodeWidth = (int)(originalWidth * scale);
+            int decodeHeight = (int)(originalHeight * scale);
+
+            // Now load the actual downscaled image
+            var bitmap = new BitmapImage();
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.StreamSource = stream;
+                bitmap.DecodePixelWidth = decodeWidth;
+                bitmap.DecodePixelHeight = decodeHeight;
+                bitmap.EndInit();
+                bitmap.Freeze();
+            }
+
+            return bitmap;
+        }
+
         private void SelectFolder_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is string key)
@@ -798,7 +975,122 @@ namespace AutoPhotoEditor
                 {
                     UpdateAppConfig(key, dialog.FolderName);
                     LoadFolderPaths();
+
+                    if (key == "InputFolder")
+                    {
+                        StartFolderWatcher();
+                    }
                 }
+            }
+        }
+
+        private void ComparisonImageScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (sender is not ScrollViewer scrollViewer)
+                return;
+
+            Image img;
+            ScaleTransform scaleTransform;
+            double initialScale;
+
+            if (scrollViewer == LeftImageScroll)
+            {
+                img = LeftImage;
+                scaleTransform = LeftImageScaleTransform;
+                initialScale = _initialLeftScale;
+            }
+            else if (scrollViewer == RightImageScroll)
+            {
+                img = RightImage;
+                scaleTransform = RightImageScaleTransform;
+                initialScale = _initialRightScale;
+            }
+            else
+                return;
+
+            if (img.Source == null)
+                return;
+
+            const double zoomFactor = 1.05;
+            double oldScale = scaleTransform.ScaleX;
+            double newScale = e.Delta > 0 ? oldScale * zoomFactor : oldScale / zoomFactor;
+
+            if (newScale < initialScale)
+                newScale = initialScale;
+
+            // Mouse position relative to ScrollViewer
+            var mousePos = e.GetPosition(scrollViewer);
+            double relativeX = (mousePos.X + scrollViewer.HorizontalOffset) / scrollViewer.ExtentWidth;
+            double relativeY = (mousePos.Y + scrollViewer.VerticalOffset) / scrollViewer.ExtentHeight;
+
+            // Apply zoom
+            scaleTransform.ScaleX = newScale;
+            scaleTransform.ScaleY = newScale;
+
+            // Adjust scroll offset after layout updated
+            scrollViewer.Dispatcher.InvokeAsync(() =>
+            {
+                double newOffsetX = scrollViewer.ExtentWidth * relativeX - mousePos.X;
+                double newOffsetY = scrollViewer.ExtentHeight * relativeY - mousePos.Y;
+
+                scrollViewer.ScrollToHorizontalOffset(newOffsetX);
+                scrollViewer.ScrollToVerticalOffset(newOffsetY);
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
+
+            e.Handled = true;
+        }
+
+        private void ComparisonImageGrid_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            var scrollViewer = ((FrameworkElement)sender).Tag as ScrollViewer;
+            if (scrollViewer == null) return;
+
+            if (e.LeftButton == MouseButtonState.Pressed)
+            {
+                if (scrollViewer == LeftImageScroll)
+                {
+                    _isDraggingLeft = true;
+                    _scrollMousePointLeft = e.GetPosition(scrollViewer);
+                    _hOffsetLeft = scrollViewer.HorizontalOffset;
+                    _vOffsetLeft = scrollViewer.VerticalOffset;
+                }
+                else
+                {
+                    _isDraggingRight = true;
+                    _scrollMousePointRight = e.GetPosition(scrollViewer);
+                    _hOffsetRight = scrollViewer.HorizontalOffset;
+                    _vOffsetRight = scrollViewer.VerticalOffset;
+                }
+                ((UIElement)sender).CaptureMouse();
+            }
+        }
+
+        private void ComparisonImageGrid_MouseMove(object sender, MouseEventArgs e)
+        {
+            var scrollViewer = ((FrameworkElement)sender).Tag as ScrollViewer;
+            if (scrollViewer == null) return;
+
+            if (scrollViewer == LeftImageScroll && _isDraggingLeft)
+            {
+                Point currentPoint = e.GetPosition(scrollViewer);
+                scrollViewer.ScrollToHorizontalOffset(_hOffsetLeft - (currentPoint.X - _scrollMousePointLeft.X));
+                scrollViewer.ScrollToVerticalOffset(_vOffsetLeft - (currentPoint.Y - _scrollMousePointLeft.Y));
+            }
+            else if (scrollViewer == RightImageScroll && _isDraggingRight)
+            {
+                Point currentPoint = e.GetPosition(scrollViewer);
+                scrollViewer.ScrollToHorizontalOffset(_hOffsetRight - (currentPoint.X - _scrollMousePointRight.X));
+                scrollViewer.ScrollToVerticalOffset(_vOffsetRight - (currentPoint.Y - _scrollMousePointRight.Y));
+            }
+        }
+
+        private void ComparisonImageGrid_MouseUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_isDraggingLeft || _isDraggingRight)
+            {
+                _isDraggingLeft = false;
+                _isDraggingRight = false;
+                ((UIElement)sender).ReleaseMouseCapture();
             }
         }
 
@@ -855,6 +1147,15 @@ namespace AutoPhotoEditor
                     }
                 }
             }
+        }
+
+        private void StartFolderWatcher()
+        {
+            _folderWatcher?.Dispose();
+            _folderWatcher = new FolderWatcher(_inputFolder, async filePath =>
+            {
+                await ProcessImage(filePath);
+            });
         }
     }
 }

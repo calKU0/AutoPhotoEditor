@@ -27,32 +27,103 @@
             Effect="{DynamicResource DropShadowEffect}">
 
             <Grid>
-                <ScrollViewer x:Name="ImageScrollViewer"
-                    HorizontalScrollBarVisibility="Auto"
-                    VerticalScrollBarVisibility="Auto"
-                    PreviewMouseWheel="ImageScrollViewer_PreviewMouseWheel">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="150" />
+                </Grid.RowDefinitions>
 
-                    <Grid x:Name="ImageContainerGrid" Background="Transparent"
-                        MouseDown="ImageGrid_MouseDown"
-                        MouseMove="ImageGrid_MouseMove"
-                        MouseUp="ImageGrid_MouseUp"
-                        AllowDrop="True"
-                        Drop="ImageContainerGrid_Drop"
-                        DragEnter="ImageContainerGrid_DragEnter"
-                        DragLeave="ImageContainerGrid_DragLeave">
-                        <Image x:Name="DownloadedImage" RenderTransformOrigin="0,0" Stretch="None" Loaded="DownloadedImage_Loaded">
-                            <Image.LayoutTransform>
-                                <ScaleTransform x:Name="ImageScaleTransform" ScaleX="1" ScaleY="1" />
-                            </Image.LayoutTransform>
-                        </Image>
+                <!-- Image scrollviewer in first row -->
+                <!-- Image display area -->
+                <!-- Wrap normal viewer + comparison viewer together -->
+                <Grid Grid.Row="0">
+                    <!-- Normal single image viewer -->
+                    <ScrollViewer x:Name="ImageScrollViewer"
+                  HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Auto"
+                  PreviewMouseWheel="ImageScrollViewer_PreviewMouseWheel">
+                        <Grid x:Name="ImageContainerGrid"
+              Background="White"
+              MouseDown="ImageGrid_MouseDown"
+              MouseMove="ImageGrid_MouseMove"
+              MouseUp="ImageGrid_MouseUp"
+              AllowDrop="True"
+              Drop="ImageContainerGrid_Drop"
+              DragEnter="ImageContainerGrid_DragEnter"
+              DragLeave="ImageContainerGrid_DragLeave">
+                            <Image x:Name="DownloadedImage" RenderTransformOrigin="0,0" Stretch="None" Loaded="DownloadedImage_Loaded">
+                                <Image.LayoutTransform>
+                                    <ScaleTransform x:Name="ImageScaleTransform" ScaleX="1" ScaleY="1" />
+                                </Image.LayoutTransform>
+                            </Image>
+                        </Grid>
+                    </ScrollViewer>
+
+                    <!-- Side-by-side comparison view -->
+                    <Grid x:Name="ComparisonGrid" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Left -->
+                        <ScrollViewer x:Name="LeftImageScroll"
+              PreviewMouseWheel="ComparisonImageScrollViewer_PreviewMouseWheel"
+              HorizontalScrollBarVisibility="Auto"
+              VerticalScrollBarVisibility="Auto">
+                            <Grid Tag="{Binding ElementName=LeftImageScroll}"
+          MouseDown="ComparisonImageGrid_MouseDown"
+          MouseMove="ComparisonImageGrid_MouseMove"
+          MouseUp="ComparisonImageGrid_MouseUp">
+                                <Image x:Name="LeftImage" Stretch="None" RenderTransformOrigin="0,0">
+                                    <Image.LayoutTransform>
+                                        <ScaleTransform x:Name="LeftImageScaleTransform" ScaleX="1" ScaleY="1" />
+                                    </Image.LayoutTransform>
+                                </Image>
+                            </Grid>
+                        </ScrollViewer>
+
+                        <!-- Right -->
+                        <ScrollViewer x:Name="RightImageScroll"
+              Grid.Column="1"
+              PreviewMouseWheel="ComparisonImageScrollViewer_PreviewMouseWheel"
+              HorizontalScrollBarVisibility="Auto"
+              VerticalScrollBarVisibility="Auto"
+              Background="{StaticResource CheckerboardBrush}">
+                            <Grid Tag="{Binding ElementName=RightImageScroll}"
+          MouseDown="ComparisonImageGrid_MouseDown"
+          MouseMove="ComparisonImageGrid_MouseMove"
+          MouseUp="ComparisonImageGrid_MouseUp">
+                                <Image x:Name="RightImage" Stretch="None" RenderTransformOrigin="0,0">
+                                    <Image.LayoutTransform>
+                                        <ScaleTransform x:Name="RightImageScaleTransform" ScaleX="1" ScaleY="1" />
+                                    </Image.LayoutTransform>
+                                </Image>
+                            </Grid>
+                        </ScrollViewer>
                     </Grid>
+                </Grid>
+
+                <!-- Bottom thumbnails panel in second row -->
+                <ScrollViewer Grid.Row="1"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Disabled"
+                      Background="#EEE"
+                      Padding="5"
+                      Margin="0">
+
+                    <StackPanel x:Name="ThumbnailPanel"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Margin="0" />
                 </ScrollViewer>
 
                 <!-- Drag Drop Overlay -->
                 <Grid x:Name="DragDropOverlay"
-                    Background="#80000000"
-                    Visibility="Collapsed"
-                    IsHitTestVisible="False">
+                      Background="#80000000"
+                      Visibility="Collapsed"
+                      IsHitTestVisible="False"
+                      Grid.RowSpan="2">
 
                     <TextBlock Text="Przeciągnij plik tutaj"
                        Foreground="White"
@@ -63,7 +134,7 @@
                 </Grid>
 
                 <!-- Loading overlay stays on top -->
-                <Grid x:Name="LoadingOverlay" Background="#80000000" Visibility="Collapsed">
+                <Grid x:Name="LoadingOverlay" Background="#80000000" Visibility="Collapsed" Grid.RowSpan="2">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <Image Width="200" Height="200"
                            VerticalAlignment="Center"
@@ -71,19 +142,20 @@
                            gif:ImageBehavior.AnimatedSource="/Resources/loading-spinner.gif"
                            gif:ImageBehavior.RepeatBehavior="Forever" />
                         <TextBlock x:Name="LoadingStatusText"
-                               Opacity="0"
-                               VerticalAlignment="Bottom"
-                               HorizontalAlignment="Center"
-                               Margin="0,0,0,10"
-                               Foreground="White"
-                               FontSize="20"
-                               FontWeight="Bold"
-                               Text="Ładowanie..."
-                               Visibility="Visible" />
+                           Opacity="0"
+                           VerticalAlignment="Bottom"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,10"
+                           Foreground="White"
+                           FontSize="20"
+                           FontWeight="Bold"
+                           Text="Ładowanie..."
+                           Visibility="Visible" />
                     </StackPanel>
                 </Grid>
             </Grid>
         </Border>
+
         <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
             <StackPanel Grid.Column="1"  VerticalAlignment="Top">
                 <!-- Button Panel -->
@@ -268,21 +340,6 @@
                                 Click="SelectFolder_Click"
                                 Tag="OutputWithoutWatermark" />
                             <TextBlock x:Name="OutputWithoutWatermarkText"
-                                VerticalAlignment="Center"
-                                Margin="0,5,0,0"
-                                TextWrapping="Wrap"
-                                FontSize="12"
-                                Foreground="#666" />
-                        </StackPanel>
-
-                        <!-- Manual Edits Folder -->
-                        <StackPanel Margin="0,0,0,15">
-                            <Button Content="📂 Manualna edycja"
-                                Style="{StaticResource FolderButtonStyle}"
-                                HorizontalAlignment="Stretch"
-                                Click="SelectFolder_Click"
-                                Tag="ManualEditsFolder" />
-                            <TextBlock x:Name="ManualEditsFolderText"
                                 VerticalAlignment="Center"
                                 Margin="0,5,0,0"
                                 TextWrapping="Wrap"

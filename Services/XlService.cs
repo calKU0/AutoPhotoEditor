@@ -23,8 +23,6 @@ namespace AutoPhotoEditor.Services
             {
                 Wersja = _xlLogin.ApiVersion,
                 ProgramID = _xlLogin.ProgramName,
-                Baza = _xlLogin.Database,
-                TrybWsadowy = _xlLogin.WithoutInterface
             };
 
             int result = cdn_api.cdn_api.XLLogin(xLLoginInfo, ref _sessionId);
@@ -44,7 +42,7 @@ namespace AutoPhotoEditor.Services
                 Wersja = _xlLogin.ApiVersion,
             };
 
-            if (_sessionId <= 0)
+            if (_sessionId > 0)
             {
                 int result = cdn_api.cdn_api.XLLogout(_sessionId);
                 if (result != 0)

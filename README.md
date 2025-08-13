@@ -26,7 +26,6 @@ AutoPhotoEditor is a powerful and automated photo processing pipeline built usin
 
 - **Python** - Core image processing and automation logic
 - **WPF (.NET)** - Desktop UI for displaying and managing images
-- **Cloudinary** - Background removal service
 - **Comarch ERP XL** - Product card integration via `cdn_api`
 - **PIL / OpenCV / rembg** - Image processing libraries
 
